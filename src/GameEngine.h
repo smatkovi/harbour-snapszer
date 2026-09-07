@@ -1,0 +1,169 @@
+#pragma once
+
+#include "GameCore.h"
+
+#include <QObject>
+#include <QString>
+#include <QTimer>
+#include <QVariantList>
+#include <QVariantMap>
+
+class QSettings;
+
+class GameEngine : public QObject
+{
+    Q_OBJECT
+
+    Q_PROPERTY(QString status READ status NOTIFY stateChanged)
+    Q_PROPERTY(QString roundResult READ roundResult NOTIFY stateChanged)
+    Q_PROPERTY(bool roundOver READ roundOver NOTIFY stateChanged)
+    Q_PROPERTY(bool matchOver READ matchOver NOTIFY stateChanged)
+    Q_PROPERTY(int turnPlayer READ turnPlayer NOTIFY stateChanged)
+    Q_PROPERTY(int dealer READ dealer NOTIFY stateChanged)
+    Q_PROPERTY(int trumpSuit READ trumpSuit NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap trumpCard READ trumpCard NOTIFY stateChanged)
+    Q_PROPERTY(bool hasTrumpCard READ hasTrumpCard NOTIFY stateChanged)
+    Q_PROPERTY(int talonSize READ talonSize NOTIFY stateChanged)
+    Q_PROPERTY(int faceDownStockSize READ faceDownStockSize NOTIFY stateChanged)
+    Q_PROPERTY(bool talonClosed READ talonClosed NOTIFY stateChanged)
+    Q_PROPERTY(bool strictPlay READ strictPlay NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList playerHand READ playerHand NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList cpuHand READ cpuHand NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList trickCards READ trickCards NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList playerWonCards READ playerWonCards NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList cpuWonCards READ cpuWonCards NOTIFY stateChanged)
+    Q_PROPERTY(int playerPoints READ playerPoints NOTIFY stateChanged)
+    Q_PROPERTY(int cpuPoints READ cpuPoints NOTIFY stateChanged)
+    Q_PROPERTY(int playerGamePoints READ playerGamePoints NOTIFY stateChanged)
+    Q_PROPERTY(int cpuGamePoints READ cpuGamePoints NOTIFY stateChanged)
+    Q_PROPERTY(bool playerInputEnabled READ playerInputEnabled NOTIFY stateChanged)
+    Q_PROPERTY(bool canExchangeTrump READ canExchangeTrump NOTIFY stateChanged)
+    Q_PROPERTY(bool canCloseTalon READ canCloseTalon NOTIFY stateChanged)
+    Q_PROPERTY(bool canClaim66 READ canClaim66 NOTIFY stateChanged)
+    Q_PROPERTY(int visualPhase READ visualPhase NOTIFY visualPhaseChanged)
+    Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged)
+
+    Q_PROPERTY(QString playerName READ playerName WRITE setPlayerName NOTIFY settingsChanged)
+    Q_PROPERTY(QString opponentName READ opponentName WRITE setOpponentName NOTIFY settingsChanged)
+    Q_PROPERTY(QString cardStyle READ cardStyle WRITE setCardStyle NOTIFY settingsChanged)
+    Q_PROPERTY(int aiDifficulty READ aiDifficulty WRITE setAiDifficulty NOTIFY settingsChanged)
+    Q_PROPERTY(int aiPlayDelay READ aiPlayDelay WRITE setAiPlayDelay NOTIFY settingsChanged)
+    Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(double animationSpeed READ animationSpeed WRITE setAnimationSpeed NOTIFY settingsChanged)
+
+public:
+    explicit GameEngine(QObject* parent = nullptr);
+    ~GameEngine() override;
+
+    enum VisualPhase { Idle = 0, CardFlight = 1, TrickPause = 2, TrickFlight = 3, Deal = 4 };
+    Q_ENUM(VisualPhase)
+
+    Q_INVOKABLE void start();
+    Q_INVOKABLE void newMatch();
+    Q_INVOKABLE void nextRound();
+    Q_INVOKABLE void playCard(int handIndex, bool declareMarriage = false);
+    Q_INVOKABLE bool isPlayerCardPlayable(int handIndex) const;
+    Q_INVOKABLE int marriagePointsForCard(int handIndex) const;
+    Q_INVOKABLE void exchangeTrump();
+    Q_INVOKABLE void closeTalon();
+    Q_INVOKABLE void claim66();
+    Q_INVOKABLE void completeCardAnimation();
+    Q_INVOKABLE void completeTrickAnimation();
+    Q_INVOKABLE void completeDealAnimation();
+
+    QString status() const;
+    QString roundResult() const;
+    bool roundOver() const { return m_core.roundOver(); }
+    bool matchOver() const { return m_core.matchOver(); }
+    int turnPlayer() const { return m_core.turn(); }
+    int dealer() const { return m_core.dealer(); }
+    int trumpSuit() const { return m_core.trumpSuit(); }
+    QVariantMap trumpCard() const;
+    bool hasTrumpCard() const { return m_core.hasTrumpCard(); }
+    int talonSize() const { return m_core.talonSize(); }
+    int faceDownStockSize() const { return m_core.faceDownStockSize(); }
+    bool talonClosed() const { return m_core.talonClosed(); }
+    bool strictPlay() const { return m_core.strictPlay(); }
+    QVariantList playerHand() const;
+    QVariantList cpuHand() const;
+    QVariantList trickCards() const;
+    QVariantList playerWonCards() const;
+    QVariantList cpuWonCards() const;
+    int playerPoints() const { return m_core.totalPoints(0); }
+    int cpuPoints() const { return m_core.totalPoints(1); }
+    int playerGamePoints() const { return m_core.gamePoints(0); }
+    int cpuGamePoints() const { return m_core.gamePoints(1); }
+    bool playerInputEnabled() const;
+    bool canExchangeTrump() const { return m_visualPhase == Idle && m_core.canExchangeTrump(0); }
+    bool canCloseTalon() const { return m_visualPhase == Idle && m_core.canCloseTalon(0); }
+    bool canClaim66() const { return m_visualPhase == Idle && m_core.canClaim66(0); }
+    int visualPhase() const { return static_cast<int>(m_visualPhase); }
+    bool paused() const { return m_paused; }
+    void setPaused(bool value);
+
+    QString playerName() const { return m_playerName; }
+    QString opponentName() const { return m_opponentName; }
+    QString cardStyle() const { return m_cardStyle; }
+    int aiDifficulty() const { return m_aiDifficulty; }
+    int aiPlayDelay() const { return m_aiPlayDelay; }
+    bool animationsEnabled() const { return m_animationsEnabled; }
+    double animationSpeed() const { return m_animationSpeed; }
+
+    void setPlayerName(const QString& value);
+    void setOpponentName(const QString& value);
+    void setCardStyle(const QString& value);
+    void setAiDifficulty(int value);
+    void setAiPlayDelay(int value);
+    void setAnimationsEnabled(bool value);
+    void setAnimationSpeed(double value);
+
+signals:
+    void stateChanged();
+    void settingsChanged();
+    void visualPhaseChanged();
+    void pausedChanged();
+    void cardAnimationRequested(const QString& cardId, int playedBy, int oldHandIndex);
+    void trickAnimationRequested(int winnerPlayer);
+    void dealAnimationRequested(const QVariantList& cards, int firstPlayer);
+
+private:
+    static QString cardId(const Snapszer::Card& card);
+    static QVariantMap cardMap(const Snapszer::Card& card);
+    static QVariantList cardsToList(const std::vector<Snapszer::Card>& cards);
+    QVariantList initialDealList() const;
+    static QVariantList drawList(const std::vector<Snapszer::DrawnCard>& cards);
+
+    void setVisualPhase(VisualPhase phase);
+    void scheduleAiMove();
+    void performAiMove();
+    void beginTrickResolution();
+    void finishIdle();
+    void startDealAnimation(const QVariantList& cards, int firstPlayer);
+    void recoverVisualTimeout();
+    void loadSettings();
+    void saveSettings();
+    QString settingsFilePath() const;
+    void persistGame();
+    bool restoreGame();
+    void clearSavedGame();
+    void normalizeRestoredState();
+    std::uint32_t freshSeed() const;
+
+    Snapszer::GameCore m_core{1};
+    QTimer m_aiTimer;
+    QTimer m_trickPauseTimer;
+    QTimer m_visualWatchdog;
+    VisualPhase m_visualPhase = Idle;
+    bool m_started = false;
+    bool m_paused = false;
+    bool m_freshGame = true;
+    bool m_pendingAiMarriageClaim = false;
+
+    QString m_playerName = QStringLiteral("Player");
+    QString m_opponentName = QStringLiteral("AI");
+    QString m_cardStyle = QStringLiteral("Piatnik");
+    int m_aiDifficulty = 1;
+    int m_aiPlayDelay = 650;
+    bool m_animationsEnabled = true;
+    double m_animationSpeed = 1.0;
+};

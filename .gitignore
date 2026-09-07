@@ -1,0 +1,6 @@
+/build/
+*.qm
+*.o
+*.rpm
+*.tar.gz
+*.zip

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Snapszer
+Icon=harbour-snapszer
+Exec=harbour-snapszer
+Type=Application
+Categories=Game;
+X-Sailfish-ApplicationType=Silica
+
+[X-Sailjail]
+Permissions=
+OrganizationName=org.edp17
+ApplicationName=harbour-snapszer
