@@ -39,7 +39,7 @@ SubPage {
 
     Repeater {
         model: [
-            { label: qsTr("Version"), value: "1.0.0-lan" },
+            { label: qsTr("Version"), value: "1.1.0" },
             { label: qsTr("Developer"), value: "edp17" },
             { label: qsTr("License"), value: "MIT" }
         ]
