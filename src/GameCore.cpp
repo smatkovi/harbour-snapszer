@@ -684,6 +684,30 @@ bool GameCore::restoreState(const std::string& serialized)
     return true;
 }
 
+void GameCore::swapPlayers()
+{
+    auto flip = [](int player) { return validPlayer(player) ? other(player) : player; };
+    std::swap(m_hands[0], m_hands[1]);
+    std::swap(m_won[0], m_won[1]);
+    for (Card& card : m_trick)
+        card.playedBy = flip(card.playedBy);
+
+    m_dealer = flip(m_dealer);
+    m_turn = flip(m_turn);
+    m_leader = flip(m_leader);
+    m_pendingTrickWinner = flip(m_pendingTrickWinner);
+    m_marriageClaimWindowPlayer = flip(m_marriageClaimWindowPlayer);
+
+    std::swap(m_cardPoints[0], m_cardPoints[1]);
+    std::swap(m_marriagePoints[0], m_marriagePoints[1]);
+    std::swap(m_hasWonTrick[0], m_hasWonTrick[1]);
+    std::swap(m_marriageDeclared[0], m_marriageDeclared[1]);
+
+    m_closer = flip(m_closer);
+    std::swap(m_gamePoints[0], m_gamePoints[1]);
+    m_roundWinner = flip(m_roundWinner);
+}
+
 bool GameCore::validate(std::string* error) const
 {
     auto fail = [&](const std::string& message) {

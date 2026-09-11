@@ -2,6 +2,8 @@
 
 #include "GameCore.h"
 
+#include <QList>
+
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -9,6 +11,7 @@
 #include <QVariantMap>
 
 class QSettings;
+class LanSession;
 
 class GameEngine : public QObject
 {
@@ -50,6 +53,15 @@ class GameEngine : public QObject
     Q_PROPERTY(int aiPlayDelay READ aiPlayDelay WRITE setAiPlayDelay NOTIFY settingsChanged)
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY settingsChanged)
     Q_PROPERTY(double animationSpeed READ animationSpeed WRITE setAnimationSpeed NOTIFY settingsChanged)
+    Q_PROPERTY(QString opponentDisplayName READ opponentDisplayName NOTIFY stateChanged)
+
+    Q_PROPERTY(bool networkGame READ networkGame NOTIFY networkChanged)
+    Q_PROPERTY(bool lanGuest READ lanGuest NOTIFY networkChanged)
+    Q_PROPERTY(bool lanBusy READ lanBusy NOTIFY networkChanged)
+    Q_PROPERTY(QString networkStatus READ networkStatus NOTIFY networkChanged)
+    Q_PROPERTY(QString localAddresses READ localAddresses NOTIFY networkChanged)
+    Q_PROPERTY(QVariantList discoveredHosts READ discoveredHosts NOTIFY discoveredHostsChanged)
+    Q_PROPERTY(QString lanAddress READ lanAddress WRITE setLanAddress NOTIFY settingsChanged)
 
 public:
     explicit GameEngine(QObject* parent = nullptr);
@@ -70,6 +82,11 @@ public:
     Q_INVOKABLE void completeCardAnimation();
     Q_INVOKABLE void completeTrickAnimation();
     Q_INVOKABLE void completeDealAnimation();
+
+    Q_INVOKABLE void hostLanGame();
+    Q_INVOKABLE void discoverLanHosts();
+    Q_INVOKABLE void joinLanGame(const QString& address);
+    Q_INVOKABLE void cancelLan();
 
     QString status() const;
     QString roundResult() const;
@@ -94,9 +111,9 @@ public:
     int playerGamePoints() const { return m_core.gamePoints(0); }
     int cpuGamePoints() const { return m_core.gamePoints(1); }
     bool playerInputEnabled() const;
-    bool canExchangeTrump() const { return m_visualPhase == Idle && m_core.canExchangeTrump(0); }
-    bool canCloseTalon() const { return m_visualPhase == Idle && m_core.canCloseTalon(0); }
-    bool canClaim66() const { return m_visualPhase == Idle && m_core.canClaim66(0); }
+    bool canExchangeTrump() const { return m_visualPhase == Idle && !m_awaitingHost && m_core.canExchangeTrump(0); }
+    bool canCloseTalon() const { return m_visualPhase == Idle && !m_awaitingHost && m_core.canCloseTalon(0); }
+    bool canClaim66() const { return m_visualPhase == Idle && !m_awaitingHost && m_core.canClaim66(0); }
     int visualPhase() const { return static_cast<int>(m_visualPhase); }
     bool paused() const { return m_paused; }
     void setPaused(bool value);
@@ -117,9 +134,23 @@ public:
     void setAnimationsEnabled(bool value);
     void setAnimationSpeed(double value);
 
+    QString opponentDisplayName() const;
+    bool networkGame() const { return m_mode != Mode::Ai; }
+    bool lanGuest() const { return m_mode == Mode::LanGuest; }
+    bool lanBusy() const;
+    QString networkStatus() const { return m_networkStatus; }
+    QString localAddresses() const;
+    QVariantList discoveredHosts() const { return m_discoveredHosts; }
+    QString lanAddress() const { return m_lanAddress; }
+    void setLanAddress(const QString& value);
+
 signals:
     void stateChanged();
     void settingsChanged();
+    void networkChanged();
+    void discoveredHostsChanged();
+    void networkNotice(const QString& text);
+    void resetVisuals();
     void visualPhaseChanged();
     void pausedChanged();
     void cardAnimationRequested(const QString& cardId, int playedBy, int oldHandIndex);
@@ -127,6 +158,13 @@ signals:
     void dealAnimationRequested(const QVariantList& cards, int firstPlayer);
 
 private:
+    // Ai: local match against the computer. LanHost: this device owns the
+    // authoritative GameCore and the remote guest is player 1. LanGuest: the
+    // core mirrors the host's state with players swapped, so the local player
+    // is still player 0; local actions are sent to the host as requests and
+    // only applied once the host echoes them back.
+    enum class Mode { Ai, LanHost, LanGuest };
+
     static QString cardId(const Snapszer::Card& card);
     static QVariantMap cardMap(const Snapszer::Card& card);
     static QVariantList cardsToList(const std::vector<Snapszer::Card>& cards);
@@ -134,6 +172,8 @@ private:
     static QVariantList drawList(const std::vector<Snapszer::DrawnCard>& cards);
 
     void setVisualPhase(VisualPhase phase);
+    bool startPlay(int player, int handIndex, bool declareMarriage);
+    bool applyAction(int player, const QString& op);
     void scheduleAiMove();
     void performAiMove();
     void beginTrickResolution();
@@ -149,6 +189,20 @@ private:
     void normalizeRestoredState();
     std::uint32_t freshSeed() const;
 
+    void onPeerConnectedChanged();
+    void onPeerLost();
+    void onConnectionFailed(const QString& reason);
+    void onHostDiscovered(const QString& address, const QString& name);
+    void onNetworkMessage(const QVariantMap& message);
+    void processRemoteQueue();
+    void hostHandleRequest(const QVariantMap& message);
+    void guestHandleMessage(const QVariantMap& message);
+    void sendToGuest(const QString& type, QVariantMap message);
+    void sendRequest(const QString& op, int handIndex = -1, bool declareMarriage = false);
+    void sendSync();
+    bool adoptRemoteState(const QVariant& encoded);
+    void returnToAiGame(const QString& notice);
+
     Snapszer::GameCore m_core{1};
     QTimer m_aiTimer;
     QTimer m_trickPauseTimer;
@@ -157,7 +211,16 @@ private:
     bool m_started = false;
     bool m_paused = false;
     bool m_freshGame = true;
-    bool m_pendingAiMarriageClaim = false;
+
+    Mode m_mode = Mode::Ai;
+    LanSession* m_session = nullptr;
+    QList<QVariantMap> m_remoteQueue;
+    bool m_processingRemote = false;
+    bool m_awaitingHost = false;
+    int m_netSeq = 0;
+    QString m_remoteName;
+    QString m_networkStatus;
+    QVariantList m_discoveredHosts;
 
     QString m_playerName = QStringLiteral("Player");
     QString m_opponentName = QStringLiteral("AI");
@@ -166,4 +229,5 @@ private:
     int m_aiPlayDelay = 650;
     bool m_animationsEnabled = true;
     double m_animationSpeed = 1.0;
+    QString m_lanAddress;
 };

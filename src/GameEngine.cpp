@@ -1,4 +1,5 @@
 #include "GameEngine.h"
+#include "LanSession.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -14,6 +15,10 @@ using Snapszer::AiAction;
 using Snapszer::AiActionType;
 using Snapszer::AiDifficulty;
 using Snapszer::RoundEndReason;
+
+namespace {
+const int kLanProtocolVersion = 1;
+}
 
 GameEngine::GameEngine(QObject* parent)
     : QObject(parent)
@@ -34,6 +39,13 @@ GameEngine::GameEngine(QObject* parent)
             m_visualWatchdog.start(7000);
     });
     connect(&m_visualWatchdog, &QTimer::timeout, this, &GameEngine::recoverVisualTimeout);
+
+    m_session = new LanSession(this);
+    connect(m_session, &LanSession::peerConnectedChanged, this, &GameEngine::onPeerConnectedChanged);
+    connect(m_session, &LanSession::peerLost, this, &GameEngine::onPeerLost);
+    connect(m_session, &LanSession::connectionFailed, this, &GameEngine::onConnectionFailed);
+    connect(m_session, &LanSession::hostDiscovered, this, &GameEngine::onHostDiscovered);
+    connect(m_session, &LanSession::messageReceived, this, &GameEngine::onNetworkMessage);
 
     loadSettings();
     m_freshGame = !restoreGame();
@@ -74,6 +86,7 @@ void GameEngine::loadSettings()
     m_aiPlayDelay = qBound(150, settings.value(QStringLiteral("ai/playDelay"), 650).toInt(), 2000);
     m_animationsEnabled = settings.value(QStringLiteral("ui/animationsEnabled"), true).toBool();
     m_animationSpeed = qBound(0.5, settings.value(QStringLiteral("ui/animationSpeed"), 1.0).toDouble(), 2.0);
+    m_lanAddress = settings.value(QStringLiteral("lan/lastAddress")).toString();
 }
 
 void GameEngine::saveSettings()
@@ -86,6 +99,7 @@ void GameEngine::saveSettings()
     settings.setValue(QStringLiteral("ai/playDelay"), m_aiPlayDelay);
     settings.setValue(QStringLiteral("ui/animationsEnabled"), m_animationsEnabled);
     settings.setValue(QStringLiteral("ui/animationSpeed"), m_animationSpeed);
+    settings.setValue(QStringLiteral("lan/lastAddress"), m_lanAddress);
     settings.sync();
 }
 
@@ -138,6 +152,27 @@ void GameEngine::setAnimationSpeed(double value)
     value = qBound(0.5, value, 2.0);
     if (qFuzzyCompare(value, m_animationSpeed)) return;
     m_animationSpeed = value; saveSettings(); emit settingsChanged();
+}
+
+void GameEngine::setLanAddress(const QString& value)
+{
+    if (value == m_lanAddress) return;
+    m_lanAddress = value; saveSettings(); emit settingsChanged();
+}
+
+QString GameEngine::opponentDisplayName() const
+{
+    return networkGame() ? m_remoteName : m_opponentName;
+}
+
+bool GameEngine::lanBusy() const
+{
+    return m_mode == Mode::Ai && m_session->role() != LanSession::None;
+}
+
+QString GameEngine::localAddresses() const
+{
+    return LanSession::localAddresses().join(QStringLiteral(", "));
 }
 
 QString GameEngine::cardId(const Snapszer::Card& card)
@@ -205,23 +240,23 @@ QVariantList GameEngine::drawList(const std::vector<Snapszer::DrawnCard>& cards)
 QString GameEngine::status() const
 {
     if (m_core.matchOver())
-        return m_core.matchWinner() == 0 ? tr("You won the match") : tr("%1 won the match").arg(m_opponentName);
+        return m_core.matchWinner() == 0 ? tr("You won the match") : tr("%1 won the match").arg(opponentDisplayName());
     if (m_core.roundOver())
         return tr("Round finished");
     if (m_visualPhase != Idle)
         return tr("Cards are moving…");
     if (m_core.talonClosed())
-        return m_core.turn() == 0 ? tr("Your turn — talon closed") : tr("%1's turn — talon closed").arg(m_opponentName);
+        return m_core.turn() == 0 ? tr("Your turn — talon closed") : tr("%1's turn — talon closed").arg(opponentDisplayName());
     if (m_core.strictPlay())
-        return m_core.turn() == 0 ? tr("Your turn — strict play") : tr("%1's turn — strict play").arg(m_opponentName);
-    return m_core.turn() == 0 ? tr("Your turn") : tr("%1's turn").arg(m_opponentName);
+        return m_core.turn() == 0 ? tr("Your turn — strict play") : tr("%1's turn — strict play").arg(opponentDisplayName());
+    return m_core.turn() == 0 ? tr("Your turn") : tr("%1's turn").arg(opponentDisplayName());
 }
 
 QString GameEngine::roundResult() const
 {
     if (!m_core.roundOver())
         return QString();
-    const QString winner = m_core.roundWinner() == 0 ? m_playerName : m_opponentName;
+    const QString winner = m_core.roundWinner() == 0 ? m_playerName : opponentDisplayName();
     QString reason;
     switch (m_core.roundEndReason()) {
     case RoundEndReason::Claim66: reason = tr("66 reached"); break;
@@ -235,7 +270,7 @@ QString GameEngine::roundResult() const
 
 bool GameEngine::playerInputEnabled() const
 {
-    return m_visualPhase == Idle && !m_core.roundOver() && m_core.turn() == 0
+    return m_visualPhase == Idle && !m_awaitingHost && !m_core.roundOver() && m_core.turn() == 0
         && !m_core.trickPending();
 }
 
@@ -246,7 +281,7 @@ bool GameEngine::isPlayerCardPlayable(int handIndex) const
 
 int GameEngine::marriagePointsForCard(int handIndex) const
 {
-    return m_visualPhase == Idle ? m_core.marriagePointsForCard(0, handIndex) : 0;
+    return m_visualPhase == Idle && !m_awaitingHost ? m_core.marriagePointsForCard(0, handIndex) : 0;
 }
 
 
@@ -287,12 +322,21 @@ void GameEngine::start()
 
 void GameEngine::newMatch()
 {
+    if (m_mode == Mode::LanGuest) {
+        if (!m_awaitingHost)
+            sendRequest(QStringLiteral("newMatch"));
+        return;
+    }
     m_started = true;
     m_aiTimer.stop();
     m_trickPauseTimer.stop();
     m_visualWatchdog.stop();
     m_core.newMatch(freshSeed());
     persistGame();
+    if (m_mode == Mode::LanHost) {
+        m_remoteQueue.clear();
+        sendToGuest(QStringLiteral("deal"), QVariantMap());
+    }
     emit stateChanged();
     startDealAnimation(initialDealList(), 1 - m_core.dealer());
 }
@@ -301,9 +345,16 @@ void GameEngine::nextRound()
 {
     if (!m_core.roundOver() || m_core.matchOver())
         return;
+    if (m_mode == Mode::LanGuest) {
+        if (!m_awaitingHost)
+            sendRequest(QStringLiteral("nextRound"));
+        return;
+    }
     m_aiTimer.stop();
     m_core.newRound();
     persistGame();
+    if (m_mode == Mode::LanHost)
+        sendToGuest(QStringLiteral("deal"), QVariantMap());
     emit stateChanged();
     startDealAnimation(initialDealList(), 1 - m_core.dealer());
 }
@@ -312,42 +363,97 @@ void GameEngine::playCard(int handIndex, bool declareMarriage)
 {
     if (!isPlayerCardPlayable(handIndex))
         return;
-    const Snapszer::Card card = m_core.hand(0)[static_cast<std::size_t>(handIndex)];
-    if (!m_core.playCard(0, handIndex, declareMarriage))
+    if (declareMarriage && m_core.marriagePointsForCard(0, handIndex) == 0)
         return;
+    if (m_mode == Mode::LanGuest) {
+        sendRequest(QStringLiteral("play"), handIndex, declareMarriage);
+        return;
+    }
+    startPlay(0, handIndex, declareMarriage);
+}
+
+bool GameEngine::startPlay(int player, int handIndex, bool declareMarriage)
+{
+    if (handIndex < 0 || handIndex >= static_cast<int>(m_core.hand(player).size()))
+        return false;
+    const Snapszer::Card card = m_core.hand(player)[static_cast<std::size_t>(handIndex)];
+    const QString before = QString::fromStdString(m_core.serializeState());
+    if (!m_core.playCard(player, handIndex, declareMarriage))
+        return false;
+    if (m_mode == Mode::LanHost) {
+        QVariantMap message;
+        message.insert(QStringLiteral("op"), QStringLiteral("play"));
+        message.insert(QStringLiteral("p"), player);
+        message.insert(QStringLiteral("i"), handIndex);
+        message.insert(QStringLiteral("m"), declareMarriage);
+        message.insert(QStringLiteral("pre"), before);
+        sendToGuest(QStringLiteral("act"), message);
+    }
     persistGame();
     setVisualPhase(CardFlight);
     emit stateChanged();
-    emit cardAnimationRequested(cardId(card), 0, handIndex);
+    emit cardAnimationRequested(cardId(card), player, handIndex);
     if (!m_animationsEnabled)
         QTimer::singleShot(0, this, &GameEngine::completeCardAnimation);
     else
         m_visualWatchdog.start(5000);
+    return true;
+}
+
+bool GameEngine::applyAction(int player, const QString& op)
+{
+    const QString before = QString::fromStdString(m_core.serializeState());
+    bool applied = false;
+    if (op == QLatin1String("exchange"))
+        applied = m_core.exchangeTrump(player);
+    else if (op == QLatin1String("close"))
+        applied = m_core.closeTalon(player);
+    else if (op == QLatin1String("claim"))
+        applied = m_core.claim66(player);
+    if (!applied)
+        return false;
+    if (op == QLatin1String("claim"))
+        m_aiTimer.stop();
+    if (m_mode == Mode::LanHost) {
+        QVariantMap message;
+        message.insert(QStringLiteral("op"), op);
+        message.insert(QStringLiteral("p"), player);
+        message.insert(QStringLiteral("pre"), before);
+        sendToGuest(QStringLiteral("act"), message);
+    }
+    persistGame();
+    emit stateChanged();
+    return true;
 }
 
 void GameEngine::exchangeTrump()
 {
-    if (m_visualPhase != Idle || !m_core.exchangeTrump(0))
+    if (!canExchangeTrump())
         return;
-    persistGame();
-    emit stateChanged();
+    if (m_mode == Mode::LanGuest)
+        sendRequest(QStringLiteral("exchange"));
+    else
+        applyAction(0, QStringLiteral("exchange"));
 }
 
 void GameEngine::closeTalon()
 {
-    if (m_visualPhase != Idle || !m_core.closeTalon(0))
+    if (!canCloseTalon())
         return;
-    persistGame();
-    emit stateChanged();
+    if (m_mode == Mode::LanGuest)
+        sendRequest(QStringLiteral("close"));
+    else
+        applyAction(0, QStringLiteral("close"));
 }
 
 void GameEngine::claim66()
 {
-    if (m_visualPhase != Idle || !m_core.claim66(0))
+    if (!canClaim66())
         return;
-    m_aiTimer.stop();
-    persistGame();
-    emit stateChanged();
+    if (m_mode == Mode::LanGuest)
+        sendRequest(QStringLiteral("claim"));
+    else
+        applyAction(0, QStringLiteral("claim"));
 }
 
 void GameEngine::completeCardAnimation()
@@ -356,27 +462,22 @@ void GameEngine::completeCardAnimation()
         return;
     m_visualWatchdog.stop();
 
-    if (m_pendingAiMarriageClaim && m_core.canClaim66(1)) {
-        m_pendingAiMarriageClaim = false;
-        m_core.claim66(1);
-        persistGame();
-        finishIdle();
-        return;
-    }
-    m_pendingAiMarriageClaim = false;
-
     if (m_core.trickPending()) {
         beginTrickResolution();
         return;
     }
 
-    // A human marriage that reaches 66 is ended immediately; there is no useful
-    // reason to force the player through an extra confirmation before the reply.
-    if (m_core.canClaim66(0) && !m_core.trick().empty()) {
-        m_core.claim66(0);
-        persistGame();
-        finishIdle();
-        return;
+    // A marriage lead that reaches 66 ends the round immediately; there is no
+    // useful reason to force an extra confirmation before the reply. This is
+    // derived from the shared state alone, so both LAN devices do it in step.
+    if (m_core.trick().size() == 1) {
+        const int leader = m_core.trick().front().playedBy;
+        if (m_core.canClaim66(leader)) {
+            m_core.claim66(leader);
+            persistGame();
+            finishIdle();
+            return;
+        }
     }
     finishIdle();
 }
@@ -437,48 +538,35 @@ void GameEngine::finishIdle()
     emit stateChanged();
     persistGame();
     scheduleAiMove();
+    processRemoteQueue();
 }
 
 void GameEngine::scheduleAiMove()
 {
     m_aiTimer.stop();
-    if (m_paused || m_visualPhase != Idle || m_core.roundOver() || m_core.turn() != 1 || m_core.trickPending())
+    if (m_mode != Mode::Ai || m_paused || m_visualPhase != Idle || m_core.roundOver() || m_core.turn() != 1 || m_core.trickPending())
         return;
     m_aiTimer.start(m_aiPlayDelay);
 }
 
 void GameEngine::performAiMove()
 {
-    if (m_paused || m_visualPhase != Idle || m_core.roundOver() || m_core.turn() != 1)
+    if (m_mode != Mode::Ai || m_paused || m_visualPhase != Idle || m_core.roundOver() || m_core.turn() != 1)
         return;
     const AiAction action = m_core.chooseAiAction(1, static_cast<AiDifficulty>(m_aiDifficulty));
     switch (action.type) {
     case AiActionType::Claim:
-        if (m_core.claim66(1)) { persistGame(); emit stateChanged(); }
+        applyAction(1, QStringLiteral("claim"));
         return;
     case AiActionType::ExchangeTrump:
-        if (m_core.exchangeTrump(1)) { persistGame(); emit stateChanged(); scheduleAiMove(); }
+        if (applyAction(1, QStringLiteral("exchange"))) scheduleAiMove();
         return;
     case AiActionType::CloseTalon:
-        if (m_core.closeTalon(1)) { persistGame(); emit stateChanged(); scheduleAiMove(); }
+        if (applyAction(1, QStringLiteral("close"))) scheduleAiMove();
         return;
-    case AiActionType::Play: {
-        if (action.handIndex < 0 || action.handIndex >= static_cast<int>(m_core.hand(1).size()))
-            return;
-        const Snapszer::Card card = m_core.hand(1)[static_cast<std::size_t>(action.handIndex)];
-        if (!m_core.playCard(1, action.handIndex, action.declareMarriage))
-            return;
-        m_pendingAiMarriageClaim = action.declareMarriage && m_core.canClaim66(1);
-        persistGame();
-        setVisualPhase(CardFlight);
-        emit stateChanged();
-        emit cardAnimationRequested(cardId(card), 1, action.handIndex);
-        if (!m_animationsEnabled)
-            QTimer::singleShot(0, this, &GameEngine::completeCardAnimation);
-        else
-            m_visualWatchdog.start(5000);
+    case AiActionType::Play:
+        startPlay(1, action.handIndex, action.declareMarriage);
         return;
-    }
     default:
         return;
     }
@@ -497,6 +585,10 @@ void GameEngine::recoverVisualTimeout()
 
 void GameEngine::persistGame()
 {
+    // The autosave slot belongs to the match against the AI, which resumes
+    // when a LAN game ends.
+    if (m_mode != Mode::Ai)
+        return;
     QSettings settings(settingsFilePath(), QSettings::NativeFormat);
     const std::string saved = m_core.serializeState();
     const QByteArray bytes(saved.data(), static_cast<int>(saved.size()));
@@ -531,4 +623,370 @@ void GameEngine::normalizeRestoredState()
     if (m_core.trickPending())
         m_core.commitTrick();
     persistGame();
+}
+
+// ---------------------------------------------------------------------------
+// LAN play
+//
+// The host's GameCore is authoritative. Every state change the host makes is
+// sent to the guest together with the state it was applied to ("pre"), and the
+// guest replays it with the same animation path. Trick commits after an
+// animation are deterministic, so they are not transmitted. Both sides only
+// consume network messages while the table is idle, which keeps the two
+// animation sequences in step regardless of device speed. Each host message
+// carries a sequence number; a guest request based on an older number is
+// answered with "nack" instead of being applied to a state the guest never saw.
+
+void GameEngine::hostLanGame()
+{
+    if (networkGame())
+        return;
+    m_discoveredHosts.clear();
+    emit discoveredHostsChanged();
+    const QString name = m_playerName.trimmed().isEmpty() ? tr("Player") : m_playerName.trimmed();
+    QString error;
+    if (m_session->startHosting(name, &error))
+        m_networkStatus = tr("Waiting for an opponent…");
+    else
+        m_networkStatus = tr("Cannot host a game: %1").arg(error);
+    emit networkChanged();
+}
+
+void GameEngine::discoverLanHosts()
+{
+    if (networkGame())
+        return;
+    if (m_session->role() == LanSession::Host) {
+        m_session->stop();
+        m_networkStatus.clear();
+        emit networkChanged();
+    }
+    m_discoveredHosts.clear();
+    emit discoveredHostsChanged();
+    m_session->discoverHosts();
+}
+
+void GameEngine::joinLanGame(const QString& address)
+{
+    const QString trimmed = address.trimmed();
+    if (networkGame() || trimmed.isEmpty())
+        return;
+    setLanAddress(trimmed);
+    m_session->joinHost(trimmed);
+    m_networkStatus = tr("Connecting to %1…").arg(trimmed);
+    emit networkChanged();
+}
+
+void GameEngine::cancelLan()
+{
+    if (networkGame()) {
+        QVariantMap bye;
+        bye.insert(QStringLiteral("t"), QStringLiteral("bye"));
+        m_session->send(bye);
+        returnToAiGame(QString());
+        return;
+    }
+    m_session->stop();
+    m_networkStatus.clear();
+    emit networkChanged();
+}
+
+void GameEngine::onPeerConnectedChanged()
+{
+    if (!m_session->peerConnected() || networkGame())
+        return;
+    if (m_session->role() == LanSession::Guest) {
+        QVariantMap hello;
+        hello.insert(QStringLiteral("t"), QStringLiteral("hello"));
+        hello.insert(QStringLiteral("v"), kLanProtocolVersion);
+        hello.insert(QStringLiteral("name"), m_playerName.trimmed().isEmpty() ? tr("Player") : m_playerName.trimmed());
+        m_session->send(hello);
+        m_networkStatus = tr("Connected, waiting for the host…");
+    } else {
+        m_networkStatus = tr("Opponent found, starting…");
+    }
+    emit networkChanged();
+}
+
+void GameEngine::onPeerLost()
+{
+    if (networkGame()) {
+        returnToAiGame(tr("Connection to %1 lost").arg(m_remoteName));
+        return;
+    }
+    if (m_session->role() == LanSession::Host) {
+        m_networkStatus = tr("Waiting for an opponent…");
+    } else {
+        m_session->stop();
+        m_networkStatus = tr("Connection lost");
+    }
+    emit networkChanged();
+}
+
+void GameEngine::onConnectionFailed(const QString& reason)
+{
+    m_networkStatus = tr("Could not connect: %1").arg(reason);
+    emit networkChanged();
+}
+
+void GameEngine::onHostDiscovered(const QString& address, const QString& name)
+{
+    if (LanSession::localAddresses().contains(address))
+        return;
+    for (const QVariant& value : m_discoveredHosts) {
+        if (value.toMap().value(QStringLiteral("address")).toString() == address)
+            return;
+    }
+    QVariantMap host;
+    host.insert(QStringLiteral("address"), address);
+    host.insert(QStringLiteral("name"), name.left(32));
+    m_discoveredHosts.append(host);
+    emit discoveredHostsChanged();
+}
+
+void GameEngine::onNetworkMessage(const QVariantMap& message)
+{
+    const QString type = message.value(QStringLiteral("t")).toString();
+    const LanSession::Role role = m_session->role();
+
+    if (role == LanSession::Host && type == QLatin1String("hello")) {
+        if (networkGame())
+            return;
+        if (message.value(QStringLiteral("v")).toInt() != kLanProtocolVersion) {
+            QVariantMap reply;
+            reply.insert(QStringLiteral("t"), QStringLiteral("version"));
+            m_session->send(reply);
+            m_session->stop();
+            m_networkStatus = tr("The other phone has an incompatible Snapszer version");
+            emit networkChanged();
+            return;
+        }
+        const QString name = message.value(QStringLiteral("name")).toString().trimmed().left(32);
+        m_remoteName = name.isEmpty() ? tr("Guest") : name;
+        m_mode = Mode::LanHost;
+        m_remoteQueue.clear();
+        m_awaitingHost = false;
+        m_netSeq = 0;
+        m_networkStatus = tr("Playing against %1").arg(m_remoteName);
+        m_aiTimer.stop();
+        m_trickPauseTimer.stop();
+        m_visualWatchdog.stop();
+        m_started = true;
+        m_freshGame = false;
+        m_core.newMatch(freshSeed());
+
+        QVariantMap welcome;
+        welcome.insert(QStringLiteral("v"), kLanProtocolVersion);
+        welcome.insert(QStringLiteral("name"), m_playerName.trimmed().isEmpty() ? tr("Player") : m_playerName.trimmed());
+        sendToGuest(QStringLiteral("welcome"), welcome);
+
+        emit resetVisuals();
+        emit networkChanged();
+        emit stateChanged();
+        startDealAnimation(initialDealList(), 1 - m_core.dealer());
+        return;
+    }
+
+    if (role == LanSession::Guest && type == QLatin1String("welcome")) {
+        if (networkGame())
+            return;
+        m_mode = Mode::LanGuest;
+        if (!adoptRemoteState(message.value(QStringLiteral("state")))) {
+            returnToAiGame(tr("The LAN game could not be started"));
+            return;
+        }
+        const QString name = message.value(QStringLiteral("name")).toString().trimmed().left(32);
+        m_remoteName = name.isEmpty() ? tr("Host") : name;
+        m_remoteQueue.clear();
+        m_awaitingHost = false;
+        m_netSeq = message.value(QStringLiteral("s")).toInt();
+        m_networkStatus = tr("Playing against %1").arg(m_remoteName);
+        m_aiTimer.stop();
+        m_trickPauseTimer.stop();
+        m_visualWatchdog.stop();
+        m_started = true;
+        m_freshGame = false;
+
+        emit resetVisuals();
+        emit networkChanged();
+        emit stateChanged();
+        startDealAnimation(initialDealList(), 1 - m_core.dealer());
+        return;
+    }
+
+    if (role == LanSession::Guest && !networkGame()
+        && (type == QLatin1String("busy") || type == QLatin1String("version"))) {
+        m_session->stop();
+        m_networkStatus = type == QLatin1String("busy")
+                ? tr("That phone is already in a game")
+                : tr("The other phone has an incompatible Snapszer version");
+        emit networkChanged();
+        return;
+    }
+
+    if (!networkGame())
+        return;
+    if (type == QLatin1String("bye")) {
+        returnToAiGame(tr("%1 left the game").arg(m_remoteName));
+        return;
+    }
+    m_remoteQueue.append(message);
+    processRemoteQueue();
+}
+
+void GameEngine::processRemoteQueue()
+{
+    if (m_processingRemote)
+        return;
+    m_processingRemote = true;
+    while (!m_remoteQueue.isEmpty() && m_visualPhase == Idle && networkGame()) {
+        const QVariantMap message = m_remoteQueue.takeFirst();
+        if (m_mode == Mode::LanHost)
+            hostHandleRequest(message);
+        else
+            guestHandleMessage(message);
+    }
+    m_processingRemote = false;
+}
+
+void GameEngine::hostHandleRequest(const QVariantMap& message)
+{
+    if (message.value(QStringLiteral("t")).toString() != QLatin1String("req"))
+        return;
+    if (message.value(QStringLiteral("s")).toInt() != m_netSeq) {
+        sendToGuest(QStringLiteral("nack"), QVariantMap());
+        return;
+    }
+    const QString op = message.value(QStringLiteral("op")).toString();
+    if (op == QLatin1String("play")) {
+        if (!startPlay(1, message.value(QStringLiteral("i")).toInt(),
+                       message.value(QStringLiteral("m")).toBool()))
+            sendSync();
+    } else if (op == QLatin1String("exchange") || op == QLatin1String("close")
+               || op == QLatin1String("claim")) {
+        if (!applyAction(1, op))
+            sendSync();
+    } else if (op == QLatin1String("nextRound") && m_core.roundOver() && !m_core.matchOver()) {
+        nextRound();
+    } else if (op == QLatin1String("newMatch")) {
+        newMatch();
+    } else {
+        sendToGuest(QStringLiteral("nack"), QVariantMap());
+    }
+}
+
+void GameEngine::guestHandleMessage(const QVariantMap& message)
+{
+    const QString type = message.value(QStringLiteral("t")).toString();
+    const QString outOfSync = tr("LAN game ended: the phones got out of sync");
+    m_netSeq = message.value(QStringLiteral("s")).toInt();
+
+    if (type == QLatin1String("act")) {
+        if (!adoptRemoteState(message.value(QStringLiteral("pre")))) {
+            returnToAiGame(outOfSync);
+            return;
+        }
+        const int player = 1 - message.value(QStringLiteral("p")).toInt();
+        if (player == 0)
+            m_awaitingHost = false;
+        const QString op = message.value(QStringLiteral("op")).toString();
+        const bool applied = op == QLatin1String("play")
+                ? startPlay(player, message.value(QStringLiteral("i")).toInt(),
+                            message.value(QStringLiteral("m")).toBool())
+                : applyAction(player, op);
+        if (!applied)
+            returnToAiGame(outOfSync);
+    } else if (type == QLatin1String("deal")) {
+        if (!adoptRemoteState(message.value(QStringLiteral("state")))) {
+            returnToAiGame(outOfSync);
+            return;
+        }
+        m_awaitingHost = false;
+        emit stateChanged();
+        startDealAnimation(initialDealList(), 1 - m_core.dealer());
+    } else if (type == QLatin1String("sync")) {
+        if (!adoptRemoteState(message.value(QStringLiteral("state")))) {
+            returnToAiGame(outOfSync);
+            return;
+        }
+        m_awaitingHost = false;
+        emit resetVisuals();
+        finishIdle();
+    } else if (type == QLatin1String("nack")) {
+        m_awaitingHost = false;
+        emit stateChanged();
+    }
+}
+
+void GameEngine::sendToGuest(const QString& type, QVariantMap message)
+{
+    if (m_mode != Mode::LanHost)
+        return;
+    if (type != QLatin1String("nack"))
+        ++m_netSeq;
+    message.insert(QStringLiteral("t"), type);
+    message.insert(QStringLiteral("s"), m_netSeq);
+    if (type == QLatin1String("welcome") || type == QLatin1String("deal") || type == QLatin1String("sync"))
+        message.insert(QStringLiteral("state"), QString::fromStdString(m_core.serializeState()));
+    m_session->send(message);
+}
+
+void GameEngine::sendSync()
+{
+    sendToGuest(QStringLiteral("sync"), QVariantMap());
+}
+
+void GameEngine::sendRequest(const QString& op, int handIndex, bool declareMarriage)
+{
+    if (m_mode != Mode::LanGuest || m_awaitingHost)
+        return;
+    QVariantMap message;
+    message.insert(QStringLiteral("t"), QStringLiteral("req"));
+    message.insert(QStringLiteral("s"), m_netSeq);
+    message.insert(QStringLiteral("op"), op);
+    message.insert(QStringLiteral("i"), handIndex);
+    message.insert(QStringLiteral("m"), declareMarriage);
+    m_session->send(message);
+    m_awaitingHost = true;
+    emit stateChanged();
+}
+
+bool GameEngine::adoptRemoteState(const QVariant& encoded)
+{
+    Snapszer::GameCore core(1);
+    if (!core.restoreState(encoded.toString().toStdString()))
+        return false;
+    if (m_mode == Mode::LanGuest)
+        core.swapPlayers();
+    m_core = core;
+    return true;
+}
+
+void GameEngine::returnToAiGame(const QString& notice)
+{
+    const bool wasNetwork = networkGame();
+    m_session->stop();
+    m_mode = Mode::Ai;
+    m_remoteQueue.clear();
+    m_awaitingHost = false;
+    m_networkStatus = notice;
+    if (wasNetwork) {
+        m_remoteName.clear();
+        m_aiTimer.stop();
+        m_trickPauseTimer.stop();
+        m_visualWatchdog.stop();
+        emit resetVisuals();
+        if (restoreGame()) {
+            normalizeRestoredState();
+            finishIdle();
+        } else {
+            m_core.newMatch(freshSeed());
+            persistGame();
+            emit stateChanged();
+            startDealAnimation(initialDealList(), 1 - m_core.dealer());
+        }
+    }
+    emit networkChanged();
+    if (!notice.isEmpty())
+        emit networkNotice(notice);
 }

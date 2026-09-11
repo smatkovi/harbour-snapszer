@@ -98,6 +98,18 @@
       <source>Match: %1 : %2</source>
       <translation>Meccs: %1 : %2</translation>
     </message>
+    <message>
+      <source>Leave LAN game</source>
+      <translation>Kilépés a LAN-játékból</translation>
+    </message>
+    <message>
+      <source>Leaving the LAN game</source>
+      <translation>Kilépés a LAN-játékból</translation>
+    </message>
+    <message>
+      <source>Play over LAN</source>
+      <translation>Játék helyi hálózaton</translation>
+    </message>
   </context>
   <context>
     <name>AboutPage</name>
@@ -379,6 +391,140 @@
     <message>
       <source>%1 wins the round: %2 game point(s) — %3</source>
       <translation>%1 nyeri a partit: %2 játékpont — %3</translation>
+    </message>
+    <message>
+      <source>Player</source>
+      <translation>Játékos</translation>
+    </message>
+    <message>
+      <source>Waiting for an opponent…</source>
+      <translation>Várakozás ellenfélre…</translation>
+    </message>
+    <message>
+      <source>Cannot host a game: %1</source>
+      <translation>Nem sikerült játékot indítani: %1</translation>
+    </message>
+    <message>
+      <source>Connecting to %1…</source>
+      <translation>Csatlakozás: %1…</translation>
+    </message>
+    <message>
+      <source>Connected, waiting for the host…</source>
+      <translation>Csatlakozva, várakozás a házigazdára…</translation>
+    </message>
+    <message>
+      <source>Opponent found, starting…</source>
+      <translation>Ellenfél megtalálva, indul…</translation>
+    </message>
+    <message>
+      <source>Connection to %1 lost</source>
+      <translation>Megszakadt a kapcsolat: %1</translation>
+    </message>
+    <message>
+      <source>Connection lost</source>
+      <translation>Megszakadt a kapcsolat</translation>
+    </message>
+    <message>
+      <source>Could not connect: %1</source>
+      <translation>Nem sikerült csatlakozni: %1</translation>
+    </message>
+    <message>
+      <source>The other phone has an incompatible Snapszer version</source>
+      <translation>A másik telefonon nem kompatibilis Snapszer-verzió fut</translation>
+    </message>
+    <message>
+      <source>Guest</source>
+      <translation>Vendég</translation>
+    </message>
+    <message>
+      <source>Playing against %1</source>
+      <translation>Ellenfél: %1</translation>
+    </message>
+    <message>
+      <source>The LAN game could not be started</source>
+      <translation>A LAN-játékot nem sikerült elindítani</translation>
+    </message>
+    <message>
+      <source>Host</source>
+      <translation>Házigazda</translation>
+    </message>
+    <message>
+      <source>That phone is already in a game</source>
+      <translation>Az a telefon már játszik</translation>
+    </message>
+    <message>
+      <source>%1 left the game</source>
+      <translation>%1 kilépett a játékból</translation>
+    </message>
+    <message>
+      <source>LAN game ended: the phones got out of sync</source>
+      <translation>A LAN-játék véget ért: a telefonok állapota eltért</translation>
+    </message>
+  </context>
+  <context>
+    <name>LanSession</name>
+    <message>
+      <source>No answer from that address</source>
+      <translation>Nem érkezett válasz erről a címről</translation>
+    </message>
+  </context>
+  <context>
+    <name>LanPage</name>
+    <message>
+      <source>Search again</source>
+      <translation>Újrakeresés</translation>
+    </message>
+    <message>
+      <source>LAN game</source>
+      <translation>LAN-játék</translation>
+    </message>
+    <message>
+      <source>Against another phone in the same network</source>
+      <translation>Egy másik telefon ellen ugyanazon a hálózaton</translation>
+    </message>
+    <message>
+      <source>Both phones need Snapszer and must be connected to the same Wi-Fi network; a hotspot opened by one of the phones works too. Your game against the AI is kept and continues afterwards.</source>
+      <translation>Mindkét telefonon legyen Snapszer, és ugyanahhoz a Wi-Fi-hálózathoz csatlakozzanak; az egyik telefon által nyitott hotspot is megfelel. Az MI elleni játszmád megmarad, és utána folytatódik.</translation>
+    </message>
+    <message>
+      <source>Cancel</source>
+      <translation>Mégse</translation>
+    </message>
+    <message>
+      <source>Host a game</source>
+      <translation>Játék indítása</translation>
+    </message>
+    <message>
+      <source>Host</source>
+      <translation>Indítás</translation>
+    </message>
+    <message>
+      <source>Address of this phone: %1</source>
+      <translation>A telefon címe: %1</translation>
+    </message>
+    <message>
+      <source>This phone is not connected to a network</source>
+      <translation>A telefon nem csatlakozik hálózathoz</translation>
+    </message>
+    <message>
+      <source>Join a game</source>
+      <translation>Csatlakozás játékhoz</translation>
+    </message>
+    <message>
+      <source>No hosted games found yet. Start hosting on the other phone, then pull down to search again.</source>
+      <translation>Még nem található játék. Indíts játékot a másik telefonon, majd húzd le a keresés megismétléséhez.</translation>
+    </message>
+    <message>
+      <source>Address of the hosting phone</source>
+      <translation>A játékot indító telefon címe</translation>
+    </message>
+    <message>
+      <source>e.g. 192.168.1.23</source>
+      <translation>pl. 192.168.1.23</translation>
+    </message>
+    <message>
+      <source>Connect</source>
+      <translation>Csatlakozás</translation>
     </message>
   </context>
 </TS>

@@ -10,13 +10,15 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 Requires:       sailfishsilica-qt5
 BuildRequires:  pkgconfig(sailfishapp)
 BuildRequires:  pkgconfig(Qt5Core)
+BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  qt5-qttools-linguist
 
 %description
 Snapszer is a native Sailfish OS implementation of the classic two-player
-Hungarian card game also known as Snapszli or 66.
+Hungarian card game also known as Snapszli or 66. Play against the AI or
+against another phone in the same Wi-Fi network.
 
 %prep
 %setup -q
