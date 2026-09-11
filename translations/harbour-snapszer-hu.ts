@@ -526,5 +526,9 @@
       <source>Connect</source>
       <translation>Csatlakozás</translation>
     </message>
+    <message>
+      <source>No hosted games found yet. Start hosting on the other phone, then search again.</source>
+      <translation>Még nem található játék. Indíts játékot a másik telefonon, majd keress újra.</translation>
+    </message>
   </context>
 </TS>

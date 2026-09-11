@@ -7,6 +7,11 @@
 #include <QTcpSocket>
 #include <QUdpSocket>
 
+#ifdef Q_OS_ANDROID
+#include <QCoreApplication>
+#include <QJniObject>
+#endif
+
 namespace {
 
 const QByteArray kProbe = QByteArrayLiteral("SNAPSZER-DISCOVER 1");
@@ -17,6 +22,54 @@ const int kPingInterval = 10000;
 // it left the WLAN. Kept generous because phones briefly stall on wake-up.
 const int kIdleTimeout = 45000;
 const int kConnectTimeout = 8000;
+
+#ifdef Q_OS_ANDROID
+// Many Android Wi-Fi drivers drop broadcast packets unless an app holds a
+// multicast lock, which would break automatic discovery.
+QJniObject s_multicastLock;
+
+void setMulticastLock(bool held)
+{
+    if (!held) {
+        if (s_multicastLock.isValid())
+            s_multicastLock.callMethod<void>("release");
+        s_multicastLock = QJniObject();
+        return;
+    }
+    if (s_multicastLock.isValid())
+        return;
+    QJniObject context(QNativeInterface::QAndroidApplication::context().object());
+    QJniObject service = QJniObject::fromString(QStringLiteral("wifi"));
+    QJniObject manager = context.callObjectMethod("getSystemService",
+            "(Ljava/lang/String;)Ljava/lang/Object;", service.object<jstring>());
+    if (!manager.isValid())
+        return;
+    QJniObject lock = manager.callObjectMethod("createMulticastLock",
+            "(Ljava/lang/String;)Landroid/net/wifi/WifiManager$MulticastLock;",
+            QJniObject::fromString(QStringLiteral("snapszer")).object<jstring>());
+    if (!lock.isValid())
+        return;
+    lock.callMethod<void>("setReferenceCounted", "(Z)V", jboolean(false));
+    lock.callMethod<void>("acquire");
+    s_multicastLock = lock;
+}
+#else
+void setMulticastLock(bool) {}
+#endif
+
+// Newer Android versions hide most interface details from apps. Asking the
+// kernel which source address it would use for an outside route still works
+// and sends no packet.
+QHostAddress routedLocalAddress()
+{
+    QUdpSocket probe;
+    probe.connectToHost(QHostAddress(QStringLiteral("8.8.8.8")), 53);
+    const QHostAddress address = probe.localAddress();
+    probe.abort();
+    if (address.protocol() != QAbstractSocket::IPv4Protocol || address.isLoopback())
+        return QHostAddress();
+    return address;
+}
 
 } // namespace
 
@@ -78,6 +131,7 @@ bool LanSession::startHosting(const QString& hostName, QString* error)
         return false;
     }
     m_role = Host;
+    setMulticastLock(true);
 
     m_responder = new QUdpSocket(this);
     if (m_responder->bind(QHostAddress::AnyIPv4, DiscoveryPort,
@@ -116,6 +170,7 @@ void LanSession::discoverHosts()
         }
         connect(m_probe, &QUdpSocket::readyRead, this, &LanSession::readDiscoveryReplies);
     }
+    setMulticastLock(true);
     m_probesLeft = 4;
     sendDiscoveryProbe();
     m_probeTimer.start();
@@ -141,6 +196,7 @@ void LanSession::stop()
         m_probe = nullptr;
     }
     m_role = None;
+    setMulticastLock(false);
     if (wasConnected)
         emit peerConnectedChanged();
 }
@@ -172,6 +228,11 @@ QStringList LanSession::localAddresses()
             if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol)
                 result.append(entry.ip().toString());
         }
+    }
+    if (result.isEmpty()) {
+        const QHostAddress routed = routedLocalAddress();
+        if (!routed.isNull())
+            result.append(routed.toString());
     }
     return result;
 }
@@ -206,8 +267,7 @@ void LanSession::attachSocket(QTcpSocket* socket)
         dropSocket();
         emit peerLost();
     });
-    connect(socket, static_cast<void (QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
-            this, [this, socket](QAbstractSocket::SocketError) {
+    auto onError = [this, socket](QAbstractSocket::SocketError) {
         if (socket != m_socket)
             return;
         const bool wasConnecting = m_connectTimer.isActive();
@@ -220,7 +280,13 @@ void LanSession::attachSocket(QTcpSocket* socket)
         } else {
             emit peerLost();
         }
-    });
+    };
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    connect(socket, &QAbstractSocket::errorOccurred, this, onError);
+#else
+    connect(socket, static_cast<void (QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
+            this, onError);
+#endif
 }
 
 void LanSession::dropSocket()
@@ -286,7 +352,8 @@ void LanSession::sendDiscoveryProbe()
         return;
     }
     --m_probesLeft;
-    m_probe->writeDatagram(kProbe, QHostAddress::Broadcast, DiscoveryPort);
+    m_probe->writeDatagram(kProbe, QHostAddress(QHostAddress::Broadcast), DiscoveryPort);
+    bool directed = false;
     const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
     for (const QNetworkInterface& iface : interfaces) {
         const QNetworkInterface::InterfaceFlags flags = iface.flags();
@@ -295,9 +362,18 @@ void LanSession::sendDiscoveryProbe()
             continue;
         const QList<QNetworkAddressEntry> entries = iface.addressEntries();
         for (const QNetworkAddressEntry& entry : entries) {
-            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol && !entry.broadcast().isNull())
+            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol && !entry.broadcast().isNull()) {
                 m_probe->writeDatagram(kProbe, entry.broadcast(), DiscoveryPort);
+                directed = true;
+            }
         }
+    }
+    if (!directed) {
+        // No interface details available: assume the usual /24 home network.
+        const QHostAddress routed = routedLocalAddress();
+        if (!routed.isNull())
+            m_probe->writeDatagram(kProbe, QHostAddress((routed.toIPv4Address() & 0xffffff00U) | 0xffU),
+                                   DiscoveryPort);
     }
 }
 
