@@ -6,6 +6,8 @@
 #include <QTranslator>
 
 #include "GameEngine.h"
+#include "LanSession.h"
+#include "MultiEngine.h"
 #include "ScreenHelper.h"
 
 int main(int argc, char *argv[])
@@ -23,13 +25,19 @@ int main(int argc, char *argv[])
 
     // Declared before the QML engine so it outlives every binding to it.
     GameEngine engine;
+    MultiEngine multi(&engine);
+    LanBrowser browser;
     ScreenHelper screen;
-    QObject::connect(&engine, &GameEngine::networkChanged, &screen, [&]() {
-        screen.setKeepScreenOn(engine.networkGame());
-    });
+    const auto updateScreen = [&]() {
+        screen.setKeepScreenOn(engine.networkGame() || multi.networkGame());
+    };
+    QObject::connect(&engine, &GameEngine::networkChanged, &screen, updateScreen);
+    QObject::connect(&multi, &MultiEngine::networkChanged, &screen, updateScreen);
 
     QQmlApplicationEngine qml;
     qml.rootContext()->setContextProperty(QStringLiteral("snapszerEngine"), &engine);
+    qml.rootContext()->setContextProperty(QStringLiteral("multiEngine"), &multi);
+    qml.rootContext()->setContextProperty(QStringLiteral("lanBrowser"), &browser);
     QObject::connect(&qml, &QQmlApplicationEngine::objectCreationFailed, &app,
                      []() { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     qml.loadFromModule("Snapszer", "Main");

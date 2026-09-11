@@ -17,8 +17,9 @@ BuildRequires:  qt5-qttools-linguist
 
 %description
 Snapszer is a native Sailfish OS implementation of the classic two-player
-Hungarian card game also known as Snapszli or 66. Play against the AI or
-against another phone in the same Wi-Fi network.
+Hungarian card game also known as Snapszli or 66, with three- and
+four-player Schnapsen variants. Play against the computer or against other
+phones in the same Wi-Fi network.
 
 %prep
 %setup -q
@@ -35,7 +36,7 @@ mkdir -p %{buildroot}/usr/bin
 install -m 755 build/harbour-snapszer %{buildroot}/usr/bin/
 
 mkdir -p %{buildroot}/usr/share/%{name}/qml
-cp -a sailfish/*.qml %{buildroot}/usr/share/%{name}/qml/
+cp -a sailfish/*.qml sailfish/qmldir qml-common/*.qml %{buildroot}/usr/share/%{name}/qml/
 cp -a sailfish/icons %{buildroot}/usr/share/%{name}/qml/
 
 mkdir -p %{buildroot}/usr/share/%{name}/images

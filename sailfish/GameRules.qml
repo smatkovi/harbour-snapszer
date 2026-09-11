@@ -119,14 +119,8 @@ Page {
                 text: qsTr("After winning a trick, call 66 once your trick points plus valid declarations reach at least 66. Normally the round is worth 1 game point if the opponent has at least 33, 2 if below 33, or 3 if the opponent has taken no trick. If nobody calls 66 and the open talon is played to the end, the last trick wins 1 game point.")
             }
 
-            SectionHeader { text: qsTr("Current scope") }
-            Label {
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                x: Theme.horizontalPageMargin
-                wrapMode: Text.WordWrap
-                font.pixelSize: Theme.fontSizeSmall
-                color: Theme.secondaryColor
-                text: qsTr("This release implements classic two-player Snapszer/66. The separate opening ‘Snapszer’ contract, kontra/rekontra and three- or four-player bidding variants are not included yet.")
+            MultiRules {
+                width: parent.width
             }
         }
     }

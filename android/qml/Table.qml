@@ -244,6 +244,24 @@ Item {
                 onTriggered: mainPage.StackView.view.push(Qt.resolvedUrl("LanPage.qml"))
             }
             MenuItem {
+                text: qsTranslate("harbour-snapszer", "Continue 3/4-player match")
+                visible: !engine.networkGame && multiEngine.canResume
+                height: visible ? implicitHeight : 0
+                onTriggered: multiEngine.resume()
+            }
+            MenuItem {
+                text: qsTranslate("harbour-snapszer", "Play with 3 players")
+                visible: !engine.networkGame
+                height: visible ? implicitHeight : 0
+                onTriggered: multiEngine.startMatch(3)
+            }
+            MenuItem {
+                text: qsTranslate("harbour-snapszer", "Play with 4 players")
+                visible: !engine.networkGame
+                height: visible ? implicitHeight : 0
+                onTriggered: multiEngine.startMatch(4)
+            }
+            MenuItem {
                 text: qsTranslate("harbour-snapszer", "New match")
                 onTriggered: confirmDialog.execute(qsTranslate("harbour-snapszer", "Starting a new match"), function() {
                     mainPage.runAction("newMatch")
@@ -725,6 +743,15 @@ Item {
     Component {
         id: flyingCardComponent
         FlyingCard { }
+    }
+
+    Connections {
+        target: multiEngine
+        function onNetworkNotice(text) {
+            noticePanel.text = text
+            noticePanel.visible = true
+            noticeTimer.restart()
+        }
     }
 
     Connections {

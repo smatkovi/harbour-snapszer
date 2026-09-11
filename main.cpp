@@ -8,6 +8,8 @@
 #include <QtQml>
 
 #include "GameEngine.h"
+#include "LanSession.h"
+#include "MultiEngine.h"
 
 int main(int argc, char *argv[])
 {
@@ -24,6 +26,8 @@ int main(int argc, char *argv[])
 
     GameEngine *engine = new GameEngine(app);
     view->rootContext()->setContextProperty(QStringLiteral("snapszerEngine"), engine);
+    view->rootContext()->setContextProperty(QStringLiteral("multiEngine"), new MultiEngine(engine, app));
+    view->rootContext()->setContextProperty(QStringLiteral("lanBrowser"), new LanBrowser(app));
 
     view->setSource(SailfishApp::pathTo(QStringLiteral("qml/harbour-snapszer.qml")));
     view->show();

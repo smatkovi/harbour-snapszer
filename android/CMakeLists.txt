@@ -19,17 +19,34 @@ qt_add_executable(snapszer
     ${SNAPSZER_ROOT}/src/GameEngine.h
     ${SNAPSZER_ROOT}/src/LanSession.cpp
     ${SNAPSZER_ROOT}/src/LanSession.h
+    ${SNAPSZER_ROOT}/src/MultiCore.cpp
+    ${SNAPSZER_ROOT}/src/MultiCore.h
+    ${SNAPSZER_ROOT}/src/MultiEngine.cpp
+    ${SNAPSZER_ROOT}/src/MultiEngine.h
 )
 target_include_directories(snapszer PRIVATE ${SNAPSZER_ROOT}/src)
 target_link_libraries(snapszer PRIVATE
     Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Quick Qt6::QuickControls2)
 
-set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml qml/Style.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# Table and rules of the three- and four-player games are shared with Sailfish OS.
+set(SNAPSZER_SHARED_QML
+    ${SNAPSZER_ROOT}/qml-common/MultiTable.qml
+    ${SNAPSZER_ROOT}/qml-common/MultiRules.qml
+)
+foreach(file ${SNAPSZER_SHARED_QML})
+    get_filename_component(name ${file} NAME)
+    set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name})
+endforeach()
 qt_add_qml_module(snapszer
     URI Snapszer
     QML_FILES
         qml/Main.qml
         qml/Theme.qml
+        qml/Style.qml
+        qml/TableButton.qml
+        qml/MultiPage.qml
+        ${SNAPSZER_SHARED_QML}
         qml/Table.qml
         qml/Card.qml
         qml/FlyingCard.qml

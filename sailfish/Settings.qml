@@ -102,6 +102,31 @@ Page {
                 onValueChanged: settings.aiPlayDelay = Math.round(value)
             }
 
+            SectionHeader { text: qsTr("Three and four players") }
+
+            ComboBox {
+                width: parent.width
+                label: qsTr("Rules for 3 players")
+                currentIndex: multiEngine.rules3
+                menu: ContextMenu {
+                    MenuItem { text: multiEngine.rulesNameFor(3, 0) }
+                    MenuItem { text: multiEngine.rulesNameFor(3, 1) }
+                }
+                onCurrentIndexChanged: multiEngine.rules3 = currentIndex
+            }
+
+            ComboBox {
+                width: parent.width
+                label: qsTr("Rules for 4 players")
+                currentIndex: multiEngine.rules4
+                description: qsTr("Applies to the next new match")
+                menu: ContextMenu {
+                    MenuItem { text: multiEngine.rulesNameFor(4, 0) }
+                    MenuItem { text: multiEngine.rulesNameFor(4, 1) }
+                }
+                onCurrentIndexChanged: multiEngine.rules4 = currentIndex
+            }
+
             SectionHeader { text: qsTr("Animation") }
 
             TextSwitch {

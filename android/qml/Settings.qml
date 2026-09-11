@@ -68,6 +68,31 @@ SubPage {
         onMoved: page.settings.aiPlayDelay = Math.round(value)
     }
 
+    SectionLabel { text: qsTr("Three and four players") }
+
+    TextBlock { text: qsTr("Rules for 3 players"); color: Theme.secondaryColor; font.pixelSize: Theme.fontSizeExtraSmall }
+    ComboBox {
+        x: Theme.horizontalPageMargin
+        width: parent.width - 2 * Theme.horizontalPageMargin
+        model: [multiEngine.rulesNameFor(3, 0), multiEngine.rulesNameFor(3, 1)]
+        currentIndex: multiEngine.rules3
+        onActivated: (index) => multiEngine.rules3 = index
+    }
+
+    TextBlock { text: qsTr("Rules for 4 players"); color: Theme.secondaryColor; font.pixelSize: Theme.fontSizeExtraSmall }
+    ComboBox {
+        x: Theme.horizontalPageMargin
+        width: parent.width - 2 * Theme.horizontalPageMargin
+        model: [multiEngine.rulesNameFor(4, 0), multiEngine.rulesNameFor(4, 1)]
+        currentIndex: multiEngine.rules4
+        onActivated: (index) => multiEngine.rules4 = index
+    }
+    TextBlock {
+        text: qsTr("Applies to the next new match")
+        color: Theme.secondaryColor
+        font.pixelSize: Theme.fontSizeExtraSmall
+    }
+
     SectionLabel { text: qsTr("Animation") }
 
     Switch {

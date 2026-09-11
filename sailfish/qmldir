@@ -1,0 +1,12 @@
+singleton Style 1.0 Style.qml
+AboutPage 1.0 AboutPage.qml
+Card 1.0 Card.qml
+CoverPage 1.0 CoverPage.qml
+FlyingCard 1.0 FlyingCard.qml
+GameRules 1.0 GameRules.qml
+LanPage 1.0 LanPage.qml
+MultiPage 1.0 MultiPage.qml
+MultiRules 1.0 MultiRules.qml
+MultiTable 1.0 MultiTable.qml
+Settings 1.0 Settings.qml
+TableButton 1.0 TableButton.qml

@@ -5,14 +5,57 @@ SubPage {
     id: page
 
     property var engine: snapszerEngine
+    property var multi: multiEngine
+    property string pendingAddress: ""
+    readonly property bool busy: engine.lanBusy || multi.lanBusy
+    readonly property string statusText: multi.lanBusy || (!engine.lanBusy && multi.networkStatus !== "")
+                                         ? multi.networkStatus : engine.networkStatus
 
     title: qsTr("LAN game")
 
-    Component.onCompleted: engine.discoverLanHosts()
+    function join(address, players) {
+        if (players > 2)
+            multi.joinLanGame(address)
+        else
+            engine.joinLanGame(address)
+    }
+
+    // An address typed by hand is asked for its table size first; an app of
+    // the first LAN release does not answer that, so fall back to two players.
+    function connectTo(address) {
+        pendingAddress = address.trim()
+        lanBrowser.probe(pendingAddress)
+        probeTimeout.restart()
+    }
+
+    Component.onCompleted: lanBrowser.search()
     // Leaving this page without a started game cancels hosting or joining.
     Component.onDestruction: {
         if (engine && !engine.networkGame)
             engine.cancelLan()
+        if (multi && !multi.networkGame)
+            multi.cancelLan()
+    }
+
+    Timer {
+        id: probeTimeout
+        interval: 2500
+        onTriggered: {
+            if (page.pendingAddress !== "")
+                page.join(page.pendingAddress, 2)
+            page.pendingAddress = ""
+        }
+    }
+
+    Connections {
+        target: lanBrowser
+        function onHostFound(address, name, players, openSeats) {
+            if (address !== page.pendingAddress)
+                return
+            probeTimeout.stop()
+            page.pendingAddress = ""
+            page.join(address, players)
+        }
     }
 
     Connections {
@@ -27,81 +70,118 @@ SubPage {
     TextBlock {
         color: Theme.secondaryHighlightColor
         font.pixelSize: Theme.fontSizeExtraSmall
-        text: qsTr("Both phones need Snapszer and must be connected to the same Wi-Fi network; a hotspot opened by one of the phones works too. Your game against the AI is kept and continues afterwards.")
+        text: qsTr("All phones need Snapszer and must be connected to the same Wi-Fi network; a hotspot opened by one of the phones works too. Your games against the computer are kept and continue afterwards.")
     }
 
     Row {
         x: Theme.horizontalPageMargin
         width: parent.width - 2 * Theme.horizontalPageMargin
         spacing: Theme.paddingMedium
-        visible: page.engine.networkStatus !== "" || page.engine.lanBusy
+        visible: page.statusText !== "" || page.busy
 
         BusyIndicator {
-            id: busy
-            running: page.engine.lanBusy
+            id: busyIndicator
+            running: page.busy
             visible: running
             width: Theme.itemSizeExtraSmall * 0.6
             height: width
             anchors.verticalCenter: parent.verticalCenter
         }
         Label {
-            width: parent.width - (busy.visible ? busy.width + parent.spacing : 0)
+            width: parent.width - (busyIndicator.visible ? busyIndicator.width + parent.spacing : 0)
             anchors.verticalCenter: parent.verticalCenter
             wrapMode: Text.WordWrap
-            text: page.engine.networkStatus
+            text: page.statusText
             color: Theme.highlightColor
             font.pixelSize: Theme.fontSizeSmall
         }
     }
 
+    Repeater {
+        model: page.multi.lobby
+        TextBlock {
+            x: Theme.horizontalPageMargin * 2
+            text: qsTr("Seat %1: %2").arg(index + 1).arg(modelData.taken ? modelData.name : qsTr("free (computer)"))
+            color: modelData.taken ? Theme.primaryColor : Theme.secondaryColor
+        }
+    }
+
     Button {
         anchors.horizontalCenter: parent.horizontalCenter
-        visible: page.engine.lanBusy
+        visible: page.multi.lanHosting
+        text: qsTr("Start game")
+        onClicked: page.multi.startLanMatch()
+    }
+
+    Button {
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: page.busy
         text: qsTr("Cancel")
-        onClicked: page.engine.cancelLan()
+        onClicked: {
+            page.engine.cancelLan()
+            page.multi.cancelLan()
+        }
     }
 
     SectionLabel { text: qsTr("Host a game") }
 
+    TextBlock { text: qsTr("Players"); color: Theme.secondaryColor; font.pixelSize: Theme.fontSizeExtraSmall }
+    ComboBox {
+        id: playersBox
+        x: Theme.horizontalPageMargin
+        width: parent.width - 2 * Theme.horizontalPageMargin
+        enabled: !page.busy
+        model: ["2 – " + qsTr("Classic Snapszer"),
+                "3 – " + page.multi.rulesNameFor(3, page.multi.rules3),
+                "4 – " + page.multi.rulesNameFor(4, page.multi.rules4)]
+    }
+
     Button {
         anchors.horizontalCenter: parent.horizontalCenter
-        enabled: !page.engine.lanBusy
+        enabled: !page.busy
         text: qsTr("Host")
-        onClicked: page.engine.hostLanGame()
+        onClicked: {
+            if (playersBox.currentIndex === 0)
+                page.engine.hostLanGame()
+            else
+                page.multi.hostLanGame(playersBox.currentIndex + 2)
+        }
     }
 
     TextBlock {
         color: Theme.secondaryColor
         font.pixelSize: Theme.fontSizeExtraSmall
-        text: page.engine.localAddresses !== ""
-              ? qsTr("Address of this phone: %1").arg(page.engine.localAddresses)
+        text: lanBrowser.localAddresses !== ""
+              ? qsTr("Address of this phone: %1").arg(lanBrowser.localAddresses)
               : qsTr("This phone is not connected to a network")
     }
 
     SectionLabel { text: qsTr("Join a game") }
 
     TextBlock {
-        visible: page.engine.discoveredHosts.length === 0
+        visible: lanBrowser.hosts.length === 0
         color: Theme.secondaryColor
-        text: qsTr("No hosted games found yet. Start hosting on the other phone, then search again.")
+        text: lanBrowser.searching ? qsTr("Searching…")
+                                   : qsTr("No hosted games found yet. Start hosting on the other phone, then search again.")
     }
 
     Repeater {
-        model: page.engine.discoveredHosts
+        model: lanBrowser.hosts
         ItemDelegate {
             width: page.width
-            enabled: !page.engine.lanBusy
-            text: modelData.name + "  •  " + modelData.address
+            enabled: !page.busy
             leftPadding: Theme.horizontalPageMargin
-            onClicked: page.engine.joinLanGame(modelData.address)
+            text: modelData.name + "\n" + qsTr("%1 players · %2 free · %3").arg(modelData.players)
+                  .arg(modelData.openSeats).arg(modelData.address)
+            onClicked: page.join(modelData.address, modelData.players)
         }
     }
 
     Button {
         anchors.horizontalCenter: parent.horizontalCenter
-        enabled: !page.engine.lanBusy
+        enabled: !page.busy && !lanBrowser.searching
         text: qsTr("Search again")
-        onClicked: page.engine.discoverLanHosts()
+        onClicked: lanBrowser.search()
     }
 
     TextBlock { text: qsTr("Address of the hosting phone"); color: Theme.secondaryColor; font.pixelSize: Theme.fontSizeExtraSmall }
@@ -112,13 +192,13 @@ SubPage {
         placeholderText: qsTr("e.g. 192.168.1.23")
         text: page.engine.lanAddress
         inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase | Qt.ImhPreferNumbers
-        onAccepted: page.engine.joinLanGame(text)
+        onAccepted: page.connectTo(text)
     }
 
     Button {
         anchors.horizontalCenter: parent.horizontalCenter
-        enabled: addressField.text.trim().length > 0 && !page.engine.lanBusy
+        enabled: addressField.text.trim().length > 0 && !page.busy
         text: qsTr("Connect")
-        onClicked: page.engine.joinLanGame(addressField.text)
+        onClicked: page.connectTo(addressField.text)
     }
 }

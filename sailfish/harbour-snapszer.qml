@@ -29,8 +29,32 @@ ApplicationWindow {
 
     // A LAN connection must survive the opponent's thinking time, so keep the
     // screen on while playing and the device awake while in the background.
-    DisplayBlanking { preventBlanking: engine.networkGame && Qt.application.active }
-    KeepAlive { enabled: engine.networkGame }
+    DisplayBlanking {
+        preventBlanking: (engine.networkGame || multiEngine.networkGame) && Qt.application.active
+    }
+    KeepAlive { enabled: engine.networkGame || multiEngine.networkGame }
+
+    // Three- and four-player matches (local or LAN) open their own table on
+    // top of the two-player one.
+    Connections {
+        target: multiEngine
+        onMatchStarted: multiPageTimer.restart()
+    }
+
+    Timer {
+        id: multiPageTimer
+        interval: 60
+        onTriggered: {
+            if (pageStack.busy) {
+                restart()
+                return
+            }
+            if (pageStack.currentPage && pageStack.currentPage.objectName === "multiPage")
+                return
+            pageStack.pop(null, PageStackAction.Immediate)
+            pageStack.push(Qt.resolvedUrl("MultiPage.qml"))
+        }
+    }
 
     cover: Component {
         CoverPage {
@@ -203,6 +227,12 @@ ApplicationWindow {
                     engine.nextRound()
                 else if (action === "leaveLan")
                     engine.cancelLan()
+                else if (action === "multi3")
+                    multiEngine.startMatch(3)
+                else if (action === "multi4")
+                    multiEngine.startMatch(4)
+                else if (action === "multiResume")
+                    multiEngine.resume()
             }
 
             function askMarriage(index, value, sx, sy) {
@@ -259,6 +289,21 @@ ApplicationWindow {
                         text: qsTr("Play over LAN")
                         visible: !engine.networkGame
                         onClicked: pageStack.push(Qt.resolvedUrl("LanPage.qml"))
+                    }
+                    MenuItem {
+                        text: qsTr("Continue 3/4-player match")
+                        visible: !engine.networkGame && multiEngine.canResume
+                        onClicked: mainPage.requestPulleyAction("multiResume")
+                    }
+                    MenuItem {
+                        text: qsTr("Play with 3 players")
+                        visible: !engine.networkGame
+                        onClicked: mainPage.requestPulleyAction("multi3")
+                    }
+                    MenuItem {
+                        text: qsTr("Play with 4 players")
+                        visible: !engine.networkGame
+                        onClicked: mainPage.requestPulleyAction("multi4")
                     }
                     MenuItem {
                         text: qsTr("New match")
@@ -756,6 +801,15 @@ ApplicationWindow {
             Component {
                 id: flyingCardComponent
                 FlyingCard { }
+            }
+
+            Connections {
+                target: multiEngine
+                onNetworkNotice: {
+                    noticePanel.text = text
+                    noticePanel.visible = true
+                    noticeTimer.restart()
+                }
             }
 
             Connections {

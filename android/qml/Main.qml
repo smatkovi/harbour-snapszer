@@ -30,6 +30,18 @@ ApplicationWindow {
         }
     }
 
+    // Three- and four-player matches (local or LAN) open their own table on
+    // top of the two-player one.
+    Connections {
+        target: multiEngine
+        function onMatchStarted() {
+            if (stack.currentItem && stack.currentItem.objectName === "multiPage")
+                return
+            stack.pop(null, StackView.Immediate)
+            stack.push(Qt.resolvedUrl("MultiPage.qml"))
+        }
+    }
+
     // The Android back button closes pages before it closes the app.
     onClosing: (close) => {
         if (stack.depth > 1) {
