@@ -1,6 +1,6 @@
 Name: harbour-snapszer
 Version: 1.0.0
-Release: 0.5.0
+Release: 0.6.0
 Summary: Classic Hungarian Snapszer card game
 License: MIT
 URL: https://github.com/edp17/harbour-snapszer
@@ -10,13 +10,15 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 Requires:       sailfishsilica-qt5
 BuildRequires:  pkgconfig(sailfishapp)
 BuildRequires:  pkgconfig(Qt5Core)
+BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  qt5-qttools-linguist
 
 %description
 Snapszer is a native Sailfish OS implementation of the classic two-player
-Hungarian card game also known as Snapszli or 66.
+Hungarian card game also known as Snapszli or 66. Play against the AI or
+against another phone in the same Wi-Fi network.
 
 %prep
 %setup -q
@@ -63,6 +65,9 @@ install -m 644 LICENSE %{buildroot}/usr/share/licenses/%{name}/
 /usr/share/licenses/%{name}
 
 %changelog
+* Fri Sep 11 2026 smatkovi - 1.0.0-0.6.0
+- Add LAN multiplayer against a second phone running Snapszer, with automatic discovery
+
 * Fri Sep 04 2026 edp17 - 1.0.0-0.4.rc4
 - Allow names to be replaced through an empty editing state and enlarge/recenter the Snapszer icon artwork
 

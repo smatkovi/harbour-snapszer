@@ -97,6 +97,10 @@ public:
     bool restoreState(const std::string& serialized);
     bool validate(std::string* error = nullptr) const;
 
+    // Exchange the roles of player 0 and player 1. A LAN guest mirrors the
+    // host's state this way so that the local player is always player 0.
+    void swapPlayers();
+
 private:
     static int other(int player) { return 1 - player; }
     static bool validPlayer(int player) { return player == 0 || player == 1; }

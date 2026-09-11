@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt5 REQUIRED COMPONENTS Core LinguistTools Qml Quick)
+find_package(Qt5 REQUIRED COMPONENTS Core LinguistTools Network Qml Quick)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SAILFISHAPP REQUIRED sailfishapp)
 
@@ -13,6 +13,7 @@ add_executable(harbour-snapszer
     main.cpp
     src/GameCore.cpp
     src/GameEngine.cpp
+    src/LanSession.cpp
 )
 
 target_include_directories(harbour-snapszer PRIVATE
@@ -21,7 +22,7 @@ target_include_directories(harbour-snapszer PRIVATE
 )
 
 target_link_libraries(harbour-snapszer
-    Qt5::Core Qt5::Qml Qt5::Quick ${SAILFISHAPP_LIBRARIES}
+    Qt5::Core Qt5::Network Qt5::Qml Qt5::Quick ${SAILFISHAPP_LIBRARIES}
 )
 
 set(SNAPSZER_TRANSLATIONS translations/harbour-snapszer-hu.ts)

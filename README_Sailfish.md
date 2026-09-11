@@ -55,3 +55,19 @@ Build in the Sailfish SDK in the usual way, or package with
 ## License
 
 MIT. See `LICENSE`.
+
+## LAN multiplayer (fork)
+
+Pull down → **Play over LAN** to play against a second phone running Snapszer
+in the same Wi-Fi network (a hotspot opened by one of the phones works too).
+
+- One phone taps **Host**, the other picks it from the list of found games or
+  enters the host's address shown on its screen.
+- The host's phone runs the authoritative game; the guest mirrors it, so each
+  player sees their own hand at the bottom.
+- The match against the AI is kept and resumes when the LAN game ends.
+- Ports: TCP 45465 (game), UDP 45466 (discovery). Sailfish OS allows both
+  through its firewall by default. The app needs the Sailjail `Internet`
+  permission for this.
+- Both phones receive the full game state, so the mode is meant for friendly
+  games, not for playing against strangers.

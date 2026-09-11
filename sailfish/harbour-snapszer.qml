@@ -18,6 +18,7 @@
 */
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import Nemo.KeepAlive 1.2
 ApplicationWindow {
     id: app
 
@@ -26,10 +27,15 @@ ApplicationWindow {
     // dynamically-created pages to access the same instance directly.
     property var engine: snapszerEngine
 
+    // A LAN connection must survive the opponent's thinking time, so keep the
+    // screen on while playing and the device awake while in the background.
+    DisplayBlanking { preventBlanking: engine.networkGame && Qt.application.active }
+    KeepAlive { enabled: engine.networkGame }
+
     cover: Component {
         CoverPage {
             playerName: engine.playerName
-            opponentName: engine.opponentName
+            opponentName: engine.opponentDisplayName
             playerGamePoints: engine.playerGamePoints
             opponentGamePoints: engine.cpuGamePoints
             playerPoints: engine.playerPoints
@@ -187,11 +193,16 @@ ApplicationWindow {
                 var action = pendingPulleyAction
                 pendingPulleyAction = ""
                 marriagePanel.visible = false
-                clearFlights()
+                // A LAN guest only sends a request here; its running animations
+                // stay valid until the host's answer arrives.
+                if (!engine.lanGuest)
+                    clearFlights()
                 if (action === "newMatch")
                     engine.newMatch()
                 else if (action === "nextRound")
                     engine.nextRound()
+                else if (action === "leaveLan")
+                    engine.cancelLan()
             }
 
             function askMarriage(index, value, sx, sy) {
@@ -238,6 +249,18 @@ ApplicationWindow {
                     onActiveChanged: if (!active) mainPage.tryPulleyAction()
 
                     MenuItem {
+                        text: qsTr("Leave LAN game")
+                        visible: engine.networkGame
+                        onClicked: newMatchRemorse.execute(qsTr("Leaving the LAN game"), function() {
+                            mainPage.requestPulleyAction("leaveLan")
+                        })
+                    }
+                    MenuItem {
+                        text: qsTr("Play over LAN")
+                        visible: !engine.networkGame
+                        onClicked: pageStack.push(Qt.resolvedUrl("LanPage.qml"))
+                    }
+                    MenuItem {
                         text: qsTr("New match")
                         onClicked: newMatchRemorse.execute(qsTr("Starting a new match"), function() {
                             mainPage.requestPulleyAction("newMatch")
@@ -276,7 +299,7 @@ ApplicationWindow {
                         horizontalAlignment: Text.AlignHCenter
                         text: qsTr("Match  %1  %2 : %3  %4")
                               .arg(engine.playerName).arg(engine.playerGamePoints)
-                              .arg(engine.cpuGamePoints).arg(engine.opponentName)
+                              .arg(engine.cpuGamePoints).arg(engine.opponentDisplayName)
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.secondaryHighlightColor
                         truncationMode: TruncationMode.Fade
@@ -316,7 +339,7 @@ ApplicationWindow {
                         anchors.top: aiHandArea.bottom
                         anchors.topMargin: -Theme.paddingSmall
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: engine.opponentName + "  •  " + qsTr("%1 points").arg(engine.cpuPoints)
+                        text: engine.opponentDisplayName + "  •  " + qsTr("%1 points").arg(engine.cpuPoints)
                         font.pixelSize: Theme.fontSizeExtraSmall
                         color: Theme.secondaryColor
                     }
@@ -340,7 +363,7 @@ ApplicationWindow {
                         Label {
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.top: parent.bottom
-                            text: engine.opponentName + " " + Math.floor(engine.cpuWonCards.length / 2)
+                            text: engine.opponentDisplayName + " " + Math.floor(engine.cpuWonCards.length / 2)
                             font.pixelSize: Theme.fontSizeExtraSmall
                             color: Theme.secondaryColor
                         }
@@ -671,7 +694,8 @@ ApplicationWindow {
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 text: engine.matchOver ? qsTr("New match") : qsTr("Next round")
                                 onClicked: {
-                                    mainPage.clearFlights()
+                                    if (!engine.lanGuest)
+                                        mainPage.clearFlights()
                                     if (engine.matchOver)
                                         engine.newMatch()
                                     else
@@ -690,6 +714,40 @@ ApplicationWindow {
 
                     RemorsePopup { id: newMatchRemorse }
                     RemorsePopup { id: closeRemorse }
+
+                    Rectangle {
+                        id: noticePanel
+                        property alias text: noticeLabel.text
+                        visible: false
+                        z: 600
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: matchLabel.bottom
+                        anchors.topMargin: Theme.paddingLarge
+                        width: parent.width - 2 * Theme.horizontalPageMargin
+                        height: noticeLabel.height + 2 * Theme.paddingMedium
+                        radius: Theme.paddingSmall
+                        color: "#f0202020"
+                        border.color: Theme.highlightColor
+
+                        Label {
+                            id: noticeLabel
+                            anchors.centerIn: parent
+                            width: parent.width - 2 * Theme.paddingMedium
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.highlightColor
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: noticePanel.visible = false
+                        }
+                        Timer {
+                            id: noticeTimer
+                            interval: 5000
+                            onTriggered: noticePanel.visible = false
+                        }
+                    }
                 }
             }
 
@@ -709,6 +767,8 @@ ApplicationWindow {
                     var fromPoint
                     if (playedBy === 0 && mainPage.pendingPlayerStartX >= 0) {
                         fromPoint = Qt.point(mainPage.pendingPlayerStartX, mainPage.pendingPlayerStartY)
+                    } else if (playedBy === 0) {
+                        fromPoint = mainPage.playerCardCenter(oldHandIndex, engine.playerHand.length + 1)
                     } else {
                         fromPoint = mainPage.aiCardCenter(oldHandIndex, engine.cpuHand.length + 1)
                     }
@@ -755,6 +815,19 @@ ApplicationWindow {
                         mainPage.hiddenTrickIds = ({})
                         engine.completeTrickAnimation()
                     }
+                }
+
+                onResetVisuals: {
+                    mainPage.clearFlights()
+                    marriagePanel.visible = false
+                    mainPage.pendingPlayerStartX = -1
+                    mainPage.pendingPlayerStartY = -1
+                }
+
+                onNetworkNotice: {
+                    noticePanel.text = text
+                    noticePanel.visible = true
+                    noticeTimer.restart()
                 }
 
                 onDealAnimationRequested: {
