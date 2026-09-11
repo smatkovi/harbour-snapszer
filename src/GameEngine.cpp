@@ -41,11 +41,11 @@ GameEngine::GameEngine(QObject* parent)
     connect(&m_visualWatchdog, &QTimer::timeout, this, &GameEngine::recoverVisualTimeout);
 
     m_session = new LanSession(this);
-    connect(m_session, &LanSession::peerConnectedChanged, this, &GameEngine::onPeerConnectedChanged);
+    connect(m_session, &LanSession::peerJoined, this, &GameEngine::onPeerConnectedChanged);
     connect(m_session, &LanSession::peerLost, this, &GameEngine::onPeerLost);
     connect(m_session, &LanSession::connectionFailed, this, &GameEngine::onConnectionFailed);
-    connect(m_session, &LanSession::hostDiscovered, this, &GameEngine::onHostDiscovered);
-    connect(m_session, &LanSession::messageReceived, this, &GameEngine::onNetworkMessage);
+    connect(m_session, &LanSession::messageReceived, this,
+            [this](int, const QVariantMap& message) { onNetworkMessage(message); });
 
     loadSettings();
     m_freshGame = !restoreGame();
@@ -65,7 +65,7 @@ std::uint32_t GameEngine::freshSeed() const
     return static_cast<std::uint32_t>(QDateTime::currentMSecsSinceEpoch() & UINT64_C(0xffffffff));
 }
 
-QString GameEngine::settingsFilePath() const
+QString GameEngine::settingsFilePath()
 {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     if (dir.isEmpty())
@@ -168,11 +168,6 @@ QString GameEngine::opponentDisplayName() const
 bool GameEngine::lanBusy() const
 {
     return m_mode == Mode::Ai && m_session->role() != LanSession::None;
-}
-
-QString GameEngine::localAddresses() const
-{
-    return LanSession::localAddresses().join(QStringLiteral(", "));
 }
 
 QString GameEngine::cardId(const Snapszer::Card& card)
@@ -641,29 +636,13 @@ void GameEngine::hostLanGame()
 {
     if (networkGame())
         return;
-    m_discoveredHosts.clear();
-    emit discoveredHostsChanged();
     const QString name = m_playerName.trimmed().isEmpty() ? tr("Player") : m_playerName.trimmed();
     QString error;
-    if (m_session->startHosting(name, &error))
+    if (m_session->startHosting(name, 2, 1, &error))
         m_networkStatus = tr("Waiting for an opponent…");
     else
         m_networkStatus = tr("Cannot host a game: %1").arg(error);
     emit networkChanged();
-}
-
-void GameEngine::discoverLanHosts()
-{
-    if (networkGame())
-        return;
-    if (m_session->role() == LanSession::Host) {
-        m_session->stop();
-        m_networkStatus.clear();
-        emit networkChanged();
-    }
-    m_discoveredHosts.clear();
-    emit discoveredHostsChanged();
-    m_session->discoverHosts();
 }
 
 void GameEngine::joinLanGame(const QString& address)
@@ -727,21 +706,6 @@ void GameEngine::onConnectionFailed(const QString& reason)
 {
     m_networkStatus = tr("Could not connect: %1").arg(reason);
     emit networkChanged();
-}
-
-void GameEngine::onHostDiscovered(const QString& address, const QString& name)
-{
-    if (LanSession::localAddresses().contains(address))
-        return;
-    for (const QVariant& value : m_discoveredHosts) {
-        if (value.toMap().value(QStringLiteral("address")).toString() == address)
-            return;
-    }
-    QVariantMap host;
-    host.insert(QStringLiteral("address"), address);
-    host.insert(QStringLiteral("name"), name.left(32));
-    m_discoveredHosts.append(host);
-    emit discoveredHostsChanged();
 }
 
 void GameEngine::onNetworkMessage(const QVariantMap& message)

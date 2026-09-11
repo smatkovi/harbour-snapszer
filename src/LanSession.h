@@ -1,20 +1,23 @@
 #pragma once
 
 #include <QByteArray>
+#include <QList>
 #include <QObject>
-#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QTcpServer>
 #include <QTimer>
+#include <QVariantList>
 #include <QVariantMap>
 
 class QTcpSocket;
 class QUdpSocket;
 
-// Transport for a two-device LAN match. One device hosts (TCP server plus a
-// UDP responder so guests can find it), the other joins. Messages are compact
-// JSON objects, one per line. The session knows nothing about the game rules.
+// Transport for LAN matches. One device hosts (TCP server plus a UDP
+// responder so other devices can find it), the others join. Messages are
+// compact JSON objects, one per line. The session knows nothing about the
+// game rules. A host accepts up to `maxPeers` guests; a guest has exactly one
+// peer, the host, with id 0.
 class LanSession : public QObject
 {
     Q_OBJECT
@@ -29,44 +32,97 @@ public:
     ~LanSession() override;
 
     Role role() const { return m_role; }
-    bool peerConnected() const;
-    QString peerAddress() const;
+    bool peerConnected() const { return !m_peers.isEmpty(); }
+    int peerCount() const { return m_peers.size(); }
 
-    bool startHosting(const QString& hostName, QString* error);
+    // `players` is the table size shown to searching devices (2 for the
+    // classic game), `maxPeers` the number of guests accepted.
+    bool startHosting(const QString& hostName, int players, int maxPeers, QString* error);
+    void setAcceptingGuests(bool accepting);
     void joinHost(const QString& address);
-    void discoverHosts();
     void stop();
     void send(const QVariantMap& message);
+    void sendTo(int peer, const QVariantMap& message);
+    void dropPeer(int peer);
 
     static QStringList localAddresses();
 
 signals:
     void peerConnectedChanged();
-    void messageReceived(const QVariantMap& message);
+    void peerJoined(int peer);
+    void peerLost(int peer);
+    void messageReceived(int peer, const QVariantMap& message);
     void connectionFailed(const QString& reason);
-    void peerLost();
-    void hostDiscovered(const QString& address, const QString& name);
 
 private:
-    void acceptConnection();
-    void attachSocket(QTcpSocket* socket);
-    void dropSocket();
-    void readSocket();
+    struct Peer {
+        int id = -1;
+        QTcpSocket* socket = nullptr;
+        QByteArray buffer;
+        qint64 lastSeen = 0;
+    };
+
+    void acceptConnections();
+    Peer* addPeer(QTcpSocket* socket);
+    Peer* findPeer(int id);
+    void removePeer(int id, bool notify);
+    void readPeer(int id);
+    void checkIdlePeers();
     void answerDiscovery();
-    void readDiscoveryReplies();
-    void sendDiscoveryProbe();
-    void sendRaw(const QByteArray& line);
+    static void writeLine(QTcpSocket* socket, const QVariantMap& message);
 
     Role m_role = None;
     QString m_hostName;
+    int m_players = 2;
+    int m_maxPeers = 1;
+    bool m_accepting = true;
+    int m_nextPeerId = 0;
     QTcpServer m_server;
-    QPointer<QTcpSocket> m_socket;
+    QList<Peer> m_peers;
     QUdpSocket* m_responder = nullptr;
-    QUdpSocket* m_probe = nullptr;
-    QByteArray m_buffer;
+    QTcpSocket* m_pendingSocket = nullptr;
     QTimer m_pingTimer;
-    QTimer m_idleTimer;
     QTimer m_connectTimer;
-    QTimer m_probeTimer;
+};
+
+// Finds hosted games in the local network by UDP broadcast, or asks a single
+// address directly.
+class LanBrowser : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QVariantList hosts READ hosts NOTIFY hostsChanged)
+    Q_PROPERTY(QString localAddresses READ localAddresses NOTIFY hostsChanged)
+    Q_PROPERTY(bool searching READ searching NOTIFY searchingChanged)
+
+public:
+    explicit LanBrowser(QObject* parent = nullptr);
+    ~LanBrowser() override;
+
+    QVariantList hosts() const { return m_hosts; }
+    QString localAddresses() const { return LanSession::localAddresses().join(QStringLiteral(", ")); }
+    bool searching() const { return m_searching; }
+
+    Q_INVOKABLE void search();
+    Q_INVOKABLE void probe(const QString& address);
+
+signals:
+    void hostsChanged();
+    void searchingChanged();
+    void hostFound(const QString& address, const QString& name, int players, int openSeats);
+
+private:
+    bool ensureSocket();
+    void startProbing();
+    void sendProbes();
+    void readReplies();
+    void finish();
+
+    QUdpSocket* m_socket = nullptr;
+    QTimer m_timer;
+    QTimer m_finishTimer;
     int m_probesLeft = 0;
+    bool m_searching = false;
+    bool m_lockHeld = false;
+    QString m_directAddress;
+    QVariantList m_hosts;
 };

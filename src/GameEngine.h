@@ -59,8 +59,6 @@ class GameEngine : public QObject
     Q_PROPERTY(bool lanGuest READ lanGuest NOTIFY networkChanged)
     Q_PROPERTY(bool lanBusy READ lanBusy NOTIFY networkChanged)
     Q_PROPERTY(QString networkStatus READ networkStatus NOTIFY networkChanged)
-    Q_PROPERTY(QString localAddresses READ localAddresses NOTIFY networkChanged)
-    Q_PROPERTY(QVariantList discoveredHosts READ discoveredHosts NOTIFY discoveredHostsChanged)
     Q_PROPERTY(QString lanAddress READ lanAddress WRITE setLanAddress NOTIFY settingsChanged)
 
 public:
@@ -84,7 +82,6 @@ public:
     Q_INVOKABLE void completeDealAnimation();
 
     Q_INVOKABLE void hostLanGame();
-    Q_INVOKABLE void discoverLanHosts();
     Q_INVOKABLE void joinLanGame(const QString& address);
     Q_INVOKABLE void cancelLan();
 
@@ -139,16 +136,16 @@ public:
     bool lanGuest() const { return m_mode == Mode::LanGuest; }
     bool lanBusy() const;
     QString networkStatus() const { return m_networkStatus; }
-    QString localAddresses() const;
-    QVariantList discoveredHosts() const { return m_discoveredHosts; }
     QString lanAddress() const { return m_lanAddress; }
     void setLanAddress(const QString& value);
+
+    // Shared with MultiEngine, which keeps its data in the same file.
+    static QString settingsFilePath();
 
 signals:
     void stateChanged();
     void settingsChanged();
     void networkChanged();
-    void discoveredHostsChanged();
     void networkNotice(const QString& text);
     void resetVisuals();
     void visualPhaseChanged();
@@ -182,7 +179,6 @@ private:
     void recoverVisualTimeout();
     void loadSettings();
     void saveSettings();
-    QString settingsFilePath() const;
     void persistGame();
     bool restoreGame();
     void clearSavedGame();
@@ -192,7 +188,6 @@ private:
     void onPeerConnectedChanged();
     void onPeerLost();
     void onConnectionFailed(const QString& reason);
-    void onHostDiscovered(const QString& address, const QString& name);
     void onNetworkMessage(const QVariantMap& message);
     void processRemoteQueue();
     void hostHandleRequest(const QVariantMap& message);
@@ -220,7 +215,6 @@ private:
     int m_netSeq = 0;
     QString m_remoteName;
     QString m_networkStatus;
-    QVariantList m_discoveredHosts;
 
     QString m_playerName = QStringLiteral("Player");
     QString m_opponentName = QStringLiteral("AI");

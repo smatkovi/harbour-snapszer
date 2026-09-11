@@ -14,6 +14,8 @@ add_executable(harbour-snapszer
     src/GameCore.cpp
     src/GameEngine.cpp
     src/LanSession.cpp
+    src/MultiCore.cpp
+    src/MultiEngine.cpp
 )
 
 target_include_directories(harbour-snapszer PRIVATE
@@ -30,10 +32,22 @@ qt5_add_translation(SNAPSZER_QM_FILES ${SNAPSZER_TRANSLATIONS})
 add_custom_target(harbour-snapszer-translations ALL DEPENDS ${SNAPSZER_QM_FILES})
 add_dependencies(harbour-snapszer harbour-snapszer-translations)
 
-option(SNAPSZER_BUILD_TESTS "Build deterministic GameCore tests" OFF)
+option(SNAPSZER_BUILD_TESTS "Build deterministic game and LAN tests" OFF)
 if(SNAPSZER_BUILD_TESTS)
     enable_testing()
-    add_executable(test_gamecore src/GameCore.cpp tests/test_gamecore.cpp)
-    target_include_directories(test_gamecore PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    add_test(NAME gamecore COMMAND test_gamecore)
+    add_executable(test_multicore src/GameCore.cpp src/MultiCore.cpp tests/test_multicore.cpp)
+    target_include_directories(test_multicore PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    add_test(NAME multicore COMMAND test_multicore)
+
+    # Headless LAN matches over localhost: two players, and a host with two
+    # guests plus a computer seat.
+    set(SNAPSZER_ENGINE_SOURCES src/GameCore.cpp src/GameEngine.cpp src/LanSession.cpp
+        src/MultiCore.cpp src/MultiEngine.cpp)
+    add_executable(lan_twoplayer tests/lan_twoplayer.cpp ${SNAPSZER_ENGINE_SOURCES})
+    add_executable(lan_multiplayer tests/lan_multiplayer.cpp ${SNAPSZER_ENGINE_SOURCES})
+    foreach(test lan_twoplayer lan_multiplayer)
+        target_include_directories(${test} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(${test} Qt5::Core Qt5::Network)
+        add_test(NAME ${test} COMMAND ${test})
+    endforeach()
 endif()

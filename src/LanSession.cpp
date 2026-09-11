@@ -1,5 +1,6 @@
 #include "LanSession.h"
 
+#include <QDateTime>
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -14,29 +15,28 @@
 
 namespace {
 
-const QByteArray kProbe = QByteArrayLiteral("SNAPSZER-DISCOVER 1");
-const QByteArray kReplyPrefix = QByteArrayLiteral("SNAPSZER-HOST 1 ");
+// Version 1 is the two-player protocol of the first LAN release; hosts of a
+// two-player game still answer it so older apps keep finding them.
+const QByteArray kProbeV1 = QByteArrayLiteral("SNAPSZER-DISCOVER 1");
+const QByteArray kProbeV2 = QByteArrayLiteral("SNAPSZER-DISCOVER 2");
+const QByteArray kReplyV1 = QByteArrayLiteral("SNAPSZER-HOST 1 ");
+const QByteArray kReplyV2 = QByteArrayLiteral("SNAPSZER-HOST 2 ");
 const int kMaxBuffer = 256 * 1024;
 const int kPingInterval = 10000;
 // A peer that has sent nothing (not even a ping) for this long is gone, e.g.
 // it left the WLAN. Kept generous because phones briefly stall on wake-up.
-const int kIdleTimeout = 45000;
+const qint64 kIdleTimeout = 45000;
 const int kConnectTimeout = 8000;
 
 #ifdef Q_OS_ANDROID
 // Many Android Wi-Fi drivers drop broadcast packets unless an app holds a
 // multicast lock, which would break automatic discovery.
 QJniObject s_multicastLock;
+int s_multicastUsers = 0;
 
-void setMulticastLock(bool held)
+void acquireMulticastLock()
 {
-    if (!held) {
-        if (s_multicastLock.isValid())
-            s_multicastLock.callMethod<void>("release");
-        s_multicastLock = QJniObject();
-        return;
-    }
-    if (s_multicastLock.isValid())
+    if (s_multicastUsers++ > 0)
         return;
     QJniObject context(QNativeInterface::QAndroidApplication::context().object());
     QJniObject service = QJniObject::fromString(QStringLiteral("wifi"));
@@ -53,8 +53,18 @@ void setMulticastLock(bool held)
     lock.callMethod<void>("acquire");
     s_multicastLock = lock;
 }
+
+void releaseMulticastLock()
+{
+    if (s_multicastUsers <= 0 || --s_multicastUsers > 0)
+        return;
+    if (s_multicastLock.isValid())
+        s_multicastLock.callMethod<void>("release");
+    s_multicastLock = QJniObject();
+}
 #else
-void setMulticastLock(bool) {}
+void acquireMulticastLock() {}
+void releaseMulticastLock() {}
 #endif
 
 // Newer Android versions hide most interface details from apps. Asking the
@@ -71,32 +81,36 @@ QHostAddress routedLocalAddress()
     return address;
 }
 
+QString plainAddress(const QHostAddress& address)
+{
+    bool ok = false;
+    const quint32 ipv4 = address.toIPv4Address(&ok);
+    return ok ? QHostAddress(ipv4).toString() : address.toString();
+}
+
 } // namespace
+
+// --- LanSession ------------------------------------------------------------------
 
 LanSession::LanSession(QObject* parent)
     : QObject(parent)
 {
     m_pingTimer.setInterval(kPingInterval);
-    m_idleTimer.setSingleShot(true);
     m_connectTimer.setSingleShot(true);
-    m_probeTimer.setInterval(600);
 
-    connect(&m_server, &QTcpServer::newConnection, this, &LanSession::acceptConnection);
+    connect(&m_server, &QTcpServer::newConnection, this, &LanSession::acceptConnections);
     connect(&m_pingTimer, &QTimer::timeout, this, [this]() {
-        sendRaw(QByteArrayLiteral("{\"t\":\"ping\"}\n"));
-    });
-    connect(&m_idleTimer, &QTimer::timeout, this, [this]() {
-        dropSocket();
-        emit peerLost();
+        const QByteArray ping = QByteArrayLiteral("{\"t\":\"ping\"}\n");
+        for (const Peer& peer : m_peers)
+            peer.socket->write(ping);
+        checkIdlePeers();
     });
     connect(&m_connectTimer, &QTimer::timeout, this, [this]() {
         if (m_role != Guest || peerConnected())
             return;
-        dropSocket();
-        m_role = None;
+        stop();
         emit connectionFailed(tr("No answer from that address"));
     });
-    connect(&m_probeTimer, &QTimer::timeout, this, &LanSession::sendDiscoveryProbe);
 }
 
 LanSession::~LanSession()
@@ -106,35 +120,24 @@ LanSession::~LanSession()
     stop();
 }
 
-bool LanSession::peerConnected() const
-{
-    return m_socket && m_socket->state() == QAbstractSocket::ConnectedState;
-}
-
-QString LanSession::peerAddress() const
-{
-    if (!m_socket)
-        return QString();
-    QHostAddress address = m_socket->peerAddress();
-    bool ok = false;
-    const quint32 ipv4 = address.toIPv4Address(&ok);
-    return ok ? QHostAddress(ipv4).toString() : address.toString();
-}
-
-bool LanSession::startHosting(const QString& hostName, QString* error)
+bool LanSession::startHosting(const QString& hostName, int players, int maxPeers, QString* error)
 {
     stop();
     m_hostName = hostName;
+    m_players = players;
+    m_maxPeers = maxPeers;
+    m_accepting = true;
     if (!m_server.listen(QHostAddress::Any, GamePort)) {
         if (error)
             *error = m_server.errorString();
         return false;
     }
     m_role = Host;
-    setMulticastLock(true);
+    acquireMulticastLock();
+    m_pingTimer.start();
 
     m_responder = new QUdpSocket(this);
-    if (m_responder->bind(QHostAddress::AnyIPv4, DiscoveryPort,
+    if (m_responder->bind(QHostAddress(QHostAddress::AnyIPv4), DiscoveryPort,
                           QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
         connect(m_responder, &QUdpSocket::readyRead, this, &LanSession::answerDiscovery);
     }
@@ -143,75 +146,99 @@ bool LanSession::startHosting(const QString& hostName, QString* error)
     return true;
 }
 
+void LanSession::setAcceptingGuests(bool accepting)
+{
+    m_accepting = accepting;
+}
+
 void LanSession::joinHost(const QString& address)
 {
     stop();
     m_role = Guest;
     QTcpSocket* socket = new QTcpSocket(this);
-    attachSocket(socket);
-    connect(socket, &QTcpSocket::connected, this, [this]() {
+    m_pendingSocket = socket;
+    socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+    connect(socket, &QTcpSocket::connected, this, [this, socket]() {
         m_connectTimer.stop();
-        m_idleTimer.start(kIdleTimeout);
+        m_pendingSocket = nullptr;
+        m_nextPeerId = 0;
+        addPeer(socket);
         m_pingTimer.start();
+        emit peerJoined(0);
         emit peerConnectedChanged();
     });
+    auto onError = [this, socket](QAbstractSocket::SocketError) {
+        if (!m_connectTimer.isActive() || peerConnected())
+            return;
+        const QString reason = socket->errorString();
+        stop();
+        emit connectionFailed(reason);
+    };
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    connect(socket, &QAbstractSocket::errorOccurred, this, onError);
+#else
+    connect(socket, static_cast<void (QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
+            this, onError);
+#endif
     m_connectTimer.start(kConnectTimeout);
     socket->connectToHost(address.trimmed(), GamePort);
 }
 
-void LanSession::discoverHosts()
-{
-    if (!m_probe) {
-        m_probe = new QUdpSocket(this);
-        if (!m_probe->bind(QHostAddress(QHostAddress::AnyIPv4), 0)) {
-            m_probe->deleteLater();
-            m_probe = nullptr;
-            return;
-        }
-        connect(m_probe, &QUdpSocket::readyRead, this, &LanSession::readDiscoveryReplies);
-    }
-    setMulticastLock(true);
-    m_probesLeft = 4;
-    sendDiscoveryProbe();
-    m_probeTimer.start();
-}
-
 void LanSession::stop()
 {
-    const bool wasConnected = peerConnected();
+    const bool hadPeers = peerConnected();
+    const bool wasActive = m_role != None;
     m_connectTimer.stop();
-    m_probeTimer.stop();
-    if (wasConnected)
-        m_socket->flush();
-    dropSocket();
+    m_pingTimer.stop();
+    if (m_pendingSocket) {
+        m_pendingSocket->disconnect(this);
+        m_pendingSocket->abort();
+        m_pendingSocket->deleteLater();
+        m_pendingSocket = nullptr;
+    }
+    while (!m_peers.isEmpty()) {
+        m_peers.first().socket->flush();
+        removePeer(m_peers.first().id, false);
+    }
     m_server.close();
     if (m_responder) {
         m_responder->close();
         m_responder->deleteLater();
         m_responder = nullptr;
     }
-    if (m_probe) {
-        m_probe->close();
-        m_probe->deleteLater();
-        m_probe = nullptr;
-    }
+    if (m_role == Host && wasActive)
+        releaseMulticastLock();
     m_role = None;
-    setMulticastLock(false);
-    if (wasConnected)
+    if (hadPeers)
         emit peerConnectedChanged();
+}
+
+void LanSession::writeLine(QTcpSocket* socket, const QVariantMap& message)
+{
+    QByteArray line = QJsonDocument(QJsonObject::fromVariantMap(message)).toJson(QJsonDocument::Compact);
+    line.append('\n');
+    socket->write(line);
 }
 
 void LanSession::send(const QVariantMap& message)
 {
-    QByteArray line = QJsonDocument(QJsonObject::fromVariantMap(message)).toJson(QJsonDocument::Compact);
-    line.append('\n');
-    sendRaw(line);
+    for (const Peer& peer : m_peers)
+        writeLine(peer.socket, message);
 }
 
-void LanSession::sendRaw(const QByteArray& line)
+void LanSession::sendTo(int peer, const QVariantMap& message)
 {
-    if (peerConnected())
-        m_socket->write(line);
+    if (Peer* target = findPeer(peer))
+        writeLine(target->socket, message);
+}
+
+void LanSession::dropPeer(int peer)
+{
+    if (Peer* target = findPeer(peer)) {
+        target->socket->flush();
+        removePeer(peer, false);
+        emit peerConnectedChanged();
+    }
 }
 
 QStringList LanSession::localAddresses()
@@ -237,97 +264,109 @@ QStringList LanSession::localAddresses()
     return result;
 }
 
-void LanSession::acceptConnection()
+void LanSession::acceptConnections()
 {
     while (m_server.hasPendingConnections()) {
         QTcpSocket* socket = m_server.nextPendingConnection();
-        if (m_socket) {
-            socket->write(QByteArrayLiteral("{\"t\":\"busy\"}\n"));
+        if (!m_accepting || m_peers.size() >= m_maxPeers) {
+            QVariantMap busy;
+            busy.insert(QStringLiteral("t"), QStringLiteral("busy"));
+            writeLine(socket, busy);
             socket->disconnectFromHost();
             connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
             continue;
         }
-        attachSocket(socket);
-        m_idleTimer.start(kIdleTimeout);
-        m_pingTimer.start();
+        socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+        const Peer* peer = addPeer(socket);
+        emit peerJoined(peer->id);
         emit peerConnectedChanged();
     }
 }
 
-void LanSession::attachSocket(QTcpSocket* socket)
+LanSession::Peer* LanSession::addPeer(QTcpSocket* socket)
 {
-    m_socket = socket;
-    m_buffer.clear();
-    socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
+    Peer peer;
+    peer.id = m_nextPeerId++;
+    peer.socket = socket;
+    peer.lastSeen = QDateTime::currentMSecsSinceEpoch();
     socket->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
-    connect(socket, &QTcpSocket::readyRead, this, &LanSession::readSocket);
-    connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
-        if (socket != m_socket)
+    const int id = peer.id;
+    connect(socket, &QTcpSocket::readyRead, this, [this, id]() { readPeer(id); });
+    connect(socket, &QTcpSocket::disconnected, this, [this, id]() {
+        if (!findPeer(id))
             return;
-        dropSocket();
-        emit peerLost();
+        removePeer(id, true);
     });
-    auto onError = [this, socket](QAbstractSocket::SocketError) {
-        if (socket != m_socket)
-            return;
-        const bool wasConnecting = m_connectTimer.isActive();
-        const QString reason = socket->errorString();
-        m_connectTimer.stop();
-        dropSocket();
-        if (wasConnecting) {
-            m_role = None;
-            emit connectionFailed(reason);
-        } else {
-            emit peerLost();
+    m_peers.append(peer);
+    return &m_peers.last();
+}
+
+LanSession::Peer* LanSession::findPeer(int id)
+{
+    for (Peer& peer : m_peers) {
+        if (peer.id == id)
+            return &peer;
+    }
+    return nullptr;
+}
+
+void LanSession::removePeer(int id, bool notify)
+{
+    for (int i = 0; i < m_peers.size(); ++i) {
+        if (m_peers[i].id != id)
+            continue;
+        QTcpSocket* socket = m_peers[i].socket;
+        m_peers.removeAt(i);
+        socket->disconnect(this);
+        socket->abort();
+        socket->deleteLater();
+        if (notify) {
+            emit peerLost(id);
+            emit peerConnectedChanged();
         }
-    };
-#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
-    connect(socket, &QAbstractSocket::errorOccurred, this, onError);
-#else
-    connect(socket, static_cast<void (QAbstractSocket::*)(QAbstractSocket::SocketError)>(&QAbstractSocket::error),
-            this, onError);
-#endif
-}
-
-void LanSession::dropSocket()
-{
-    m_pingTimer.stop();
-    m_idleTimer.stop();
-    m_buffer.clear();
-    if (!m_socket)
-        return;
-    QTcpSocket* socket = m_socket;
-    m_socket = nullptr;
-    socket->disconnect(this);
-    socket->abort();
-    socket->deleteLater();
-}
-
-void LanSession::readSocket()
-{
-    if (!m_socket)
-        return;
-    m_idleTimer.start(kIdleTimeout);
-    m_buffer.append(m_socket->readAll());
-    if (m_buffer.size() > kMaxBuffer) {
-        dropSocket();
-        emit peerLost();
         return;
     }
-    int newline;
-    while ((newline = m_buffer.indexOf('\n')) >= 0) {
-        const QByteArray line = m_buffer.left(newline);
-        m_buffer.remove(0, newline + 1);
+}
+
+void LanSession::checkIdlePeers()
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QList<int> idle;
+    for (const Peer& peer : m_peers) {
+        if (now - peer.lastSeen > kIdleTimeout)
+            idle.append(peer.id);
+    }
+    for (int id : idle)
+        removePeer(id, true);
+}
+
+void LanSession::readPeer(int id)
+{
+    Peer* peer = findPeer(id);
+    if (!peer)
+        return;
+    peer->lastSeen = QDateTime::currentMSecsSinceEpoch();
+    peer->buffer.append(peer->socket->readAll());
+    if (peer->buffer.size() > kMaxBuffer) {
+        removePeer(id, true);
+        return;
+    }
+    while (true) {
+        peer = findPeer(id); // a handler may have removed it or changed the list
+        if (!peer)
+            return;
+        const int newline = peer->buffer.indexOf('\n');
+        if (newline < 0)
+            return;
+        const QByteArray line = peer->buffer.left(newline);
+        peer->buffer.remove(0, newline + 1);
         const QJsonDocument document = QJsonDocument::fromJson(line);
         if (!document.isObject())
             continue;
         const QVariantMap message = document.object().toVariantMap();
         if (message.value(QStringLiteral("t")).toString() == QLatin1String("ping"))
             continue;
-        emit messageReceived(message);
-        // A handler may have closed the session.
-        if (!m_socket)
-            return;
+        emit messageReceived(id, message);
     }
 }
 
@@ -339,57 +378,190 @@ void LanSession::answerDiscovery()
         QHostAddress sender;
         quint16 senderPort = 0;
         m_responder->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
-        if (datagram.trimmed() != kProbe || m_role != Host || m_socket)
+        const int openSeats = m_accepting ? m_maxPeers - m_peers.size() : 0;
+        if (m_role != Host || openSeats <= 0)
             continue;
-        m_responder->writeDatagram(kReplyPrefix + m_hostName.toUtf8(), sender, senderPort);
-    }
-}
-
-void LanSession::sendDiscoveryProbe()
-{
-    if (!m_probe || m_probesLeft <= 0) {
-        m_probeTimer.stop();
-        return;
-    }
-    --m_probesLeft;
-    m_probe->writeDatagram(kProbe, QHostAddress(QHostAddress::Broadcast), DiscoveryPort);
-    bool directed = false;
-    const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
-    for (const QNetworkInterface& iface : interfaces) {
-        const QNetworkInterface::InterfaceFlags flags = iface.flags();
-        if (!(flags & QNetworkInterface::IsUp) || !(flags & QNetworkInterface::CanBroadcast)
-            || (flags & QNetworkInterface::IsLoopBack))
-            continue;
-        const QList<QNetworkAddressEntry> entries = iface.addressEntries();
-        for (const QNetworkAddressEntry& entry : entries) {
-            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol && !entry.broadcast().isNull()) {
-                m_probe->writeDatagram(kProbe, entry.broadcast(), DiscoveryPort);
-                directed = true;
-            }
+        datagram = datagram.trimmed();
+        if (datagram == kProbeV2) {
+            m_responder->writeDatagram(kReplyV2 + QByteArray::number(m_players) + ' '
+                                       + QByteArray::number(openSeats) + ' ' + m_hostName.toUtf8(),
+                                       sender, senderPort);
+        } else if (datagram == kProbeV1 && m_players == 2) {
+            m_responder->writeDatagram(kReplyV1 + m_hostName.toUtf8(), sender, senderPort);
         }
     }
-    if (!directed) {
-        // No interface details available: assume the usual /24 home network.
-        const QHostAddress routed = routedLocalAddress();
-        if (!routed.isNull())
-            m_probe->writeDatagram(kProbe, QHostAddress((routed.toIPv4Address() & 0xffffff00U) | 0xffU),
-                                   DiscoveryPort);
+}
+
+// --- LanBrowser ------------------------------------------------------------------
+
+LanBrowser::LanBrowser(QObject* parent)
+    : QObject(parent)
+{
+    m_timer.setInterval(600);
+    m_finishTimer.setSingleShot(true);
+    m_finishTimer.setInterval(900);
+    connect(&m_timer, &QTimer::timeout, this, &LanBrowser::sendProbes);
+    connect(&m_finishTimer, &QTimer::timeout, this, &LanBrowser::finish);
+}
+
+LanBrowser::~LanBrowser()
+{
+    if (m_lockHeld)
+        releaseMulticastLock();
+}
+
+bool LanBrowser::ensureSocket()
+{
+    if (m_socket)
+        return true;
+    m_socket = new QUdpSocket(this);
+    if (!m_socket->bind(QHostAddress(QHostAddress::AnyIPv4), 0)) {
+        m_socket->deleteLater();
+        m_socket = nullptr;
+        return false;
+    }
+    connect(m_socket, &QUdpSocket::readyRead, this, &LanBrowser::readReplies);
+    return true;
+}
+
+void LanBrowser::search()
+{
+    m_directAddress.clear();
+    m_hosts.clear();
+    emit hostsChanged();
+    startProbing();
+}
+
+void LanBrowser::probe(const QString& address)
+{
+    const QHostAddress host(address.trimmed());
+    if (host.isNull())
+        return;
+    m_directAddress = host.toString();
+    startProbing();
+}
+
+void LanBrowser::startProbing()
+{
+    if (!ensureSocket())
+        return;
+    if (!m_lockHeld) {
+        acquireMulticastLock();
+        m_lockHeld = true;
+    }
+    m_finishTimer.stop();
+    m_probesLeft = 5;
+    if (!m_searching) {
+        m_searching = true;
+        emit searchingChanged();
+    }
+    sendProbes();
+    m_timer.start();
+}
+
+void LanBrowser::sendProbes()
+{
+    if (!m_socket || m_probesLeft <= 0)
+        return;
+    --m_probesLeft;
+    auto sendTo = [this](const QHostAddress& target) {
+        m_socket->writeDatagram(kProbeV2, target, LanSession::DiscoveryPort);
+        m_socket->writeDatagram(kProbeV1, target, LanSession::DiscoveryPort);
+    };
+    if (!m_directAddress.isEmpty()) {
+        sendTo(QHostAddress(m_directAddress));
+    } else {
+        sendTo(QHostAddress(QHostAddress::Broadcast));
+        bool directed = false;
+        const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
+        for (const QNetworkInterface& iface : interfaces) {
+            const QNetworkInterface::InterfaceFlags flags = iface.flags();
+            if (!(flags & QNetworkInterface::IsUp) || !(flags & QNetworkInterface::CanBroadcast)
+                || (flags & QNetworkInterface::IsLoopBack))
+                continue;
+            const QList<QNetworkAddressEntry> entries = iface.addressEntries();
+            for (const QNetworkAddressEntry& entry : entries) {
+                if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol && !entry.broadcast().isNull()) {
+                    sendTo(entry.broadcast());
+                    directed = true;
+                }
+            }
+        }
+        if (!directed) {
+            // No interface details available: assume the usual /24 home network.
+            const QHostAddress routed = routedLocalAddress();
+            if (!routed.isNull())
+                sendTo(QHostAddress((routed.toIPv4Address() & 0xffffff00U) | 0xffU));
+        }
+    }
+    if (m_probesLeft <= 0) {
+        m_timer.stop();
+        m_finishTimer.start(); // leave time for the last answers
     }
 }
 
-void LanSession::readDiscoveryReplies()
+void LanBrowser::finish()
 {
-    while (m_probe && m_probe->hasPendingDatagrams()) {
+    if (m_lockHeld) {
+        releaseMulticastLock();
+        m_lockHeld = false;
+    }
+    if (m_searching) {
+        m_searching = false;
+        emit searchingChanged();
+    }
+}
+
+void LanBrowser::readReplies()
+{
+    const QStringList own = LanSession::localAddresses();
+    while (m_socket && m_socket->hasPendingDatagrams()) {
         QByteArray datagram;
-        datagram.resize(static_cast<int>(m_probe->pendingDatagramSize()));
+        datagram.resize(static_cast<int>(m_socket->pendingDatagramSize()));
         QHostAddress sender;
         quint16 senderPort = 0;
-        m_probe->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
-        if (!datagram.startsWith(kReplyPrefix))
+        m_socket->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
+
+        int players = 2;
+        int openSeats = 1;
+        QString name;
+        if (datagram.startsWith(kReplyV2)) {
+            const QList<QByteArray> parts = datagram.mid(kReplyV2.size()).split(' ');
+            if (parts.size() < 3)
+                continue;
+            players = parts[0].toInt();
+            openSeats = parts[1].toInt();
+            name = QString::fromUtf8(datagram.mid(kReplyV2.size() + parts[0].size() + parts[1].size() + 2)).trimmed();
+        } else if (datagram.startsWith(kReplyV1)) {
+            name = QString::fromUtf8(datagram.mid(kReplyV1.size())).trimmed();
+        } else {
             continue;
-        const QString name = QString::fromUtf8(datagram.mid(kReplyPrefix.size())).trimmed();
-        bool ok = false;
-        const quint32 ipv4 = sender.toIPv4Address(&ok);
-        emit hostDiscovered(ok ? QHostAddress(ipv4).toString() : sender.toString(), name);
+        }
+        const QString address = plainAddress(sender);
+        if (m_directAddress.isEmpty() && own.contains(address))
+            continue;
+        bool known = false;
+        for (int i = 0; i < m_hosts.size(); ++i) {
+            QVariantMap host = m_hosts[i].toMap();
+            if (host.value(QStringLiteral("address")).toString() != address)
+                continue;
+            known = true;
+            // A version 2 answer carries more detail than a version 1 one.
+            if (datagram.startsWith(kReplyV2)) {
+                host.insert(QStringLiteral("players"), players);
+                host.insert(QStringLiteral("openSeats"), openSeats);
+                m_hosts[i] = host;
+            }
+        }
+        if (!known) {
+            QVariantMap host;
+            host.insert(QStringLiteral("address"), address);
+            host.insert(QStringLiteral("name"), name.left(32));
+            host.insert(QStringLiteral("players"), players);
+            host.insert(QStringLiteral("openSeats"), openSeats);
+            m_hosts.append(host);
+        }
+        emit hostsChanged();
+        emit hostFound(address, name.left(32), players, openSeats);
     }
 }
