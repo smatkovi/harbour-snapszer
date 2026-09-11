@@ -1,6 +1,6 @@
 Name: harbour-snapszer
 Version: 1.1.0
-Release: 2
+Release: 3
 Summary: Classic Hungarian Snapszer card game
 License: MIT
 URL: https://github.com/edp17/harbour-snapszer
@@ -66,6 +66,9 @@ install -m 644 LICENSE %{buildroot}/usr/share/licenses/%{name}/
 /usr/share/licenses/%{name}
 
 %changelog
+* Fri Sep 11 2026 smatkovi - 1.1.0-3
+- Release 1.1.0: busy state while connecting, clearer notice for old apps, confirm before replacing a saved match
+
 * Fri Sep 11 2026 smatkovi - 1.1.0-2
 - Keep the device awake while hosting or joining a LAN game
 
