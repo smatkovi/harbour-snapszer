@@ -33,8 +33,54 @@ std::string rotated(const MultiCore& core, int offset)
 
 } // namespace
 
+// Deterministic checks of single rules, independent of the random matches.
+void ruleChecks()
+{
+    // The forehand is the first to bid and may open with a higher contract.
+    for (MultiVariant variant : {MultiVariant::AustrianThree, MultiVariant::AustrianFour}) {
+        for (std::uint32_t seed = 1; seed < 40; ++seed) {
+            MultiCore core(variant, seed);
+            const int fh = core.forehand();
+            CHECK(core.apply(fh, core.legalActions(fh).front()));
+            CHECK(core.phase() == MultiPhase::Bidding);
+            CHECK(core.actor() == fh);
+            bool canOpenHigher = false;
+            for (const MultiAction& action : core.legalActions(fh))
+                canOpenHigher = canOpenHigher || (action.type == MultiActionType::Bid
+                                                  && action.value == static_cast<int>(Contract::Schnapser));
+            CHECK(canOpenHigher);
+            // Opening pass keeps the normal game; everybody else passing ends the bidding.
+            CHECK(core.apply(fh, {MultiActionType::Pass, -1, false}));
+            CHECK(!core.hasPassed(fh));
+            while (core.phase() == MultiPhase::Bidding)
+                CHECK(core.apply(core.actor(), {MultiActionType::Pass, -1, false}));
+            CHECK(core.declarer() == fh && core.contract() == Contract::Normal);
+        }
+    }
+    // Hungarian four-player: every seat but the hívó is asked for Kontra,
+    // whoever holds the called card.
+    for (std::uint32_t seed = 1; seed < 60; ++seed) {
+        MultiCore core(MultiVariant::HungarianFour, seed);
+        const int fh = core.forehand();
+        CHECK(core.apply(fh, {MultiActionType::CallCard, 314, false}));
+        CHECK(core.apply(fh, {MultiActionType::Pass, -1, false}));
+        CHECK(core.phase() == MultiPhase::Doubling);
+        int asked = 0;
+        while (core.phase() == MultiPhase::Doubling && core.doublingStep() == 0) {
+            const int seat = core.actor();
+            CHECK(seat != fh);
+            const bool mayDouble = core.isLegal(seat, {MultiActionType::Double, -1, false});
+            CHECK(mayDouble == !core.inDeclarerParty(seat));
+            CHECK(core.apply(seat, {MultiActionType::Pass, -1, false}));
+            ++asked;
+        }
+        CHECK(asked == 3);
+    }
+}
+
 int main()
 {
+    ruleChecks();
     std::mt19937 pick(20260911);
     const char* names[] = {"hármas", "Dreierschnapsen", "négyes", "Bauernschnapsen"};
     for (int v = 0; v < 4; ++v) {
@@ -97,6 +143,10 @@ int main()
                 CHECK(actor >= 0);
                 if (actor < 0)
                     break;
+                if (host.phase() == MultiPhase::Doubling && host.variant() == MultiVariant::HungarianFour) {
+                    // The order of who is asked must not depend on the secret partner.
+                    CHECK(actor != host.declarer() || host.doublingStep() % 2 == 1);
+                }
                 const auto legal = host.legalActions(actor);
                 CHECK(!legal.empty());
                 const auto guestLegal = guest.legalActions(guestSeat(actor));

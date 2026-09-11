@@ -26,13 +26,32 @@ Page {
 
     property var engine: multiEngine
 
-    onStatusChanged: engine.paused = status !== PageStatus.Active
+    // A LAN table is left with "Leave LAN game", so a swipe cannot strand the
+    // seat of a player who is still connected.
+    backNavigation: !engine.networkGame
+
+    onStatusChanged: {
+        engine.paused = status !== PageStatus.Active
+        if (status === PageStatus.Active && !engine.active)
+            closeTimer.restart()
+    }
 
     Connections {
         target: page.engine
         // A LAN match that ended (host left, connection lost) closes the table.
         onStateChanged: {
-            if (!page.engine.active && page.status === PageStatus.Active)
+            if (!page.engine.active)
+                closeTimer.restart()
+        }
+    }
+
+    Timer {
+        id: closeTimer
+        interval: 50
+        onTriggered: {
+            if (pageStack.busy)
+                restart()
+            else if (pageStack.currentPage === page && !page.engine.active)
                 pageStack.pop()
         }
     }

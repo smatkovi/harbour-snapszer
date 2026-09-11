@@ -165,6 +165,12 @@ Item {
         clearFlights()
     }
 
+    function showNotice(text) {
+        noticeText.text = text
+        noticeBox.visible = true
+        noticeTimer.restart()
+    }
+
     function tapCard(card) {
         if (!card.playable)
             return
@@ -183,11 +189,13 @@ Item {
         engine.cardAnimationRequested.connect(onCardFlight)
         engine.trickAnimationRequested.connect(onTrickFlight)
         engine.resetVisuals.connect(onReset)
+        engine.networkNotice.connect(showNotice)
     }
     Component.onDestruction: {
         engine.cardAnimationRequested.disconnect(onCardFlight)
         engine.trickAnimationRequested.disconnect(onTrickFlight)
         engine.resetVisuals.disconnect(onReset)
+        engine.networkNotice.disconnect(showNotice)
     }
 
     // --- opponents --------------------------------------------------------------
@@ -670,6 +678,39 @@ Item {
                         engine.nextRound()
                 }
             }
+        }
+    }
+
+    Rectangle {
+        id: noticeBox
+        visible: false
+        z: 900
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: header.bottom
+        anchors.topMargin: Style.paddingLarge
+        width: parent.width - 2 * Style.horizontalPageMargin
+        height: noticeText.height + 2 * Style.paddingMedium
+        radius: Style.paddingSmall
+        color: "#f0202020"
+        border.color: Style.highlightColor
+
+        Text {
+            id: noticeText
+            anchors.centerIn: parent
+            width: parent.width - 2 * Style.paddingMedium
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            color: Style.highlightColor
+            font.pixelSize: Style.fontSizeSmall
+        }
+        MouseArea {
+            anchors.fill: parent
+            onClicked: noticeBox.visible = false
+        }
+        Timer {
+            id: noticeTimer
+            interval: 5000
+            onTriggered: noticeBox.visible = false
         }
     }
 

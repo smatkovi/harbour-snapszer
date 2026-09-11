@@ -164,6 +164,15 @@ Item {
             engine.cancelLan()
     }
 
+    // A running 3/4-player match is only replaced after confirmation.
+    function startMulti(players) {
+        if (multiEngine.active && !multiEngine.matchOver)
+            confirmDialog.execute(qsTranslate("harbour-snapszer", "Replacing the running 3/4-player match"),
+                                  function() { multiEngine.startMatch(players) })
+        else
+            multiEngine.startMatch(players)
+    }
+
     function askMarriage(index, value, sx, sy) {
         marriagePanel.handIndex = index
         marriagePanel.marriageValue = value
@@ -239,27 +248,28 @@ Item {
             }
             MenuItem {
                 text: qsTranslate("harbour-snapszer", "Play over LAN")
-                visible: !engine.networkGame
+                visible: !engine.networkGame && !multiEngine.networkGame
                 height: visible ? implicitHeight : 0
                 onTriggered: mainPage.StackView.view.push(Qt.resolvedUrl("LanPage.qml"))
             }
             MenuItem {
-                text: qsTranslate("harbour-snapszer", "Continue 3/4-player match")
+                text: multiEngine.active ? qsTranslate("harbour-snapszer", "Back to 3/4-player table")
+                                         : qsTranslate("harbour-snapszer", "Continue 3/4-player match")
                 visible: !engine.networkGame && multiEngine.canResume
                 height: visible ? implicitHeight : 0
                 onTriggered: multiEngine.resume()
             }
             MenuItem {
                 text: qsTranslate("harbour-snapszer", "Play with 3 players")
-                visible: !engine.networkGame
+                visible: !engine.networkGame && !multiEngine.networkGame
                 height: visible ? implicitHeight : 0
-                onTriggered: multiEngine.startMatch(3)
+                onTriggered: mainPage.startMulti(3)
             }
             MenuItem {
                 text: qsTranslate("harbour-snapszer", "Play with 4 players")
-                visible: !engine.networkGame
+                visible: !engine.networkGame && !multiEngine.networkGame
                 height: visible ? implicitHeight : 0
-                onTriggered: multiEngine.startMatch(4)
+                onTriggered: mainPage.startMulti(4)
             }
             MenuItem {
                 text: qsTranslate("harbour-snapszer", "New match")

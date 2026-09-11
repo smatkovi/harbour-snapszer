@@ -25,26 +25,39 @@ Page {
     // Same root-context instances as Settings.qml uses.
     property var engine: snapszerEngine
     property var multi: multiEngine
-    property string pendingAddress: ""
+    // Which engine the last host or join went to, for the status line.
+    property bool useMulti: false
     readonly property bool busy: engine.lanBusy || multi.lanBusy
-    readonly property string statusText: multi.lanBusy || (!engine.lanBusy && multi.networkStatus !== "")
-                                         ? multi.networkStatus : engine.networkStatus
+    readonly property string statusText: useMulti ? multi.networkStatus : engine.networkStatus
 
     allowedOrientations: Orientation.All
 
+    // Only one engine hosts or joins at a time; the other one is reset so an
+    // old status of it cannot linger.
     function join(address, players) {
-        if (players > 2)
+        useMulti = players > 2
+        if (useMulti) {
+            if (!engine.networkGame)
+                engine.cancelLan()
             multi.joinLanGame(address)
-        else
+        } else {
+            if (!multi.networkGame)
+                multi.cancelLan()
             engine.joinLanGame(address)
+        }
     }
 
-    // An address typed by hand is asked for its table size first; an app of
-    // the first LAN release does not answer that, so fall back to two players.
-    function connectTo(address) {
-        pendingAddress = address.trim()
-        lanBrowser.probe(pendingAddress)
-        probeTimeout.restart()
+    function host(players) {
+        useMulti = players > 2
+        if (useMulti) {
+            if (!engine.networkGame)
+                engine.cancelLan()
+            multi.hostLanGame(players)
+        } else {
+            if (!multi.networkGame)
+                multi.cancelLan()
+            engine.hostLanGame()
+        }
     }
 
     Component.onCompleted: lanBrowser.search()
@@ -56,25 +69,15 @@ Page {
             multi.cancelLan()
     }
 
-    Timer {
-        id: probeTimeout
-        interval: 2500
-        onTriggered: {
-            if (page.pendingAddress !== "")
-                page.join(page.pendingAddress, 2)
-            page.pendingAddress = ""
-        }
-    }
-
+    // A typed address is joined as a two-player game first; a host with a
+    // bigger table answers with its size and the join is repeated.
     Connections {
-        target: lanBrowser
-        onHostFound: {
-            if (address !== page.pendingAddress)
-                return
-            probeTimeout.stop()
-            page.pendingAddress = ""
-            page.join(address, players)
-        }
+        target: engine
+        onLanRedirect: page.join(address, players)
+    }
+    Connections {
+        target: multi
+        onLanRedirect: page.join(address, players)
     }
 
     Connections {
@@ -146,7 +149,7 @@ Page {
             }
 
             Repeater {
-                model: page.multi.lobby
+                model: page.multi.lanBusy ? page.multi.lobby : 0
                 Label {
                     x: Theme.horizontalPageMargin * 2
                     width: content.width - 3 * Theme.horizontalPageMargin
@@ -196,12 +199,7 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 enabled: !page.busy
                 text: qsTr("Host")
-                onClicked: {
-                    if (playersBox.currentIndex === 0)
-                        page.engine.hostLanGame()
-                    else
-                        page.multi.hostLanGame(playersBox.currentIndex + 2)
-                }
+                onClicked: page.host(playersBox.currentIndex + 2)
             }
 
             Label {
@@ -213,6 +211,41 @@ Page {
                 text: lanBrowser.localAddresses !== ""
                       ? qsTr("Address of this phone: %1").arg(lanBrowser.localAddresses)
                       : qsTr("This phone is not connected to a network")
+            }
+
+            BackgroundItem {
+                width: parent.width
+                height: internetColumn.height + Theme.paddingMedium
+                visible: lanBrowser.internetAddresses !== ""
+                onClicked: lanBrowser.copyToClipboard(lanBrowser.internetAddresses.split("\n")[0])
+
+                Column {
+                    id: internetColumn
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    Label {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: Theme.secondaryColor
+                        text: qsTr("For play over the internet (IPv6), tap to copy:")
+                    }
+                    Label {
+                        width: parent.width
+                        wrapMode: Text.WrapAnywhere
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        color: parent.parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        text: lanBrowser.internetAddresses.split("\n")[0]
+                    }
+                    Label {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: Theme.fontSizeTiny
+                        color: Theme.secondaryColor
+                        text: qsTr("Works when both networks support IPv6 and allow incoming connections. Over IPv4 the host must be reachable by other means, e.g. a VPN.")
+                    }
+                }
             }
 
             SectionHeader { text: qsTr("Join a game") }
@@ -260,14 +293,14 @@ Page {
                 id: addressField
                 width: parent.width
                 label: qsTr("Address of the hosting phone")
-                placeholderText: qsTr("e.g. 192.168.1.23")
+                placeholderText: qsTr("e.g. 192.168.1.23 or an IPv6 address")
                 text: page.engine.lanAddress
-                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase | Qt.ImhPreferNumbers
+                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
                 EnterKey.enabled: text.trim().length > 0 && !page.busy
                 EnterKey.iconSource: "image://theme/icon-m-enter-accept"
                 EnterKey.onClicked: {
                     focus = false
-                    page.connectTo(text)
+                    page.join(text, 2)
                 }
             }
 
@@ -275,7 +308,7 @@ Page {
                 anchors.horizontalCenter: parent.horizontalCenter
                 enabled: addressField.text.trim().length > 0 && !page.busy
                 text: qsTr("Connect")
-                onClicked: page.connectTo(addressField.text)
+                onClicked: page.join(addressField.text, 2)
             }
         }
     }

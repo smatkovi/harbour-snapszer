@@ -13,9 +13,11 @@ Item {
         target: page.engine
         // A LAN match that ended (host left, connection lost) closes the table.
         function onStateChanged() {
+            // The table sits directly above the two-player table, so this
+            // also closes pages opened on top of it.
             const view = page.StackView.view
-            if (!page.engine.active && view && view.currentItem === page)
-                view.pop()
+            if (!page.engine.active && view)
+                view.pop(null)
         }
     }
 
@@ -54,6 +56,8 @@ Item {
         }
         MenuItem {
             text: qsTranslate("MultiPage", "Two-player table")
+            visible: !page.engine.networkGame
+            height: visible ? implicitHeight : 0
             onTriggered: page.StackView.view.pop()
         }
         MenuItem {
@@ -64,6 +68,11 @@ Item {
             text: qsTranslate("MultiPage", "Settings")
             onTriggered: page.StackView.view.push(Qt.resolvedUrl("Settings.qml"))
         }
+    }
+
+    // Android back on a LAN table asks before leaving the match.
+    function confirmLeave() {
+        confirm.execute(qsTranslate("MultiPage", "Leaving the LAN game"), function() { page.engine.cancelLan() })
     }
 
     Dialog {

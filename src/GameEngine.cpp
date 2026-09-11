@@ -44,8 +44,7 @@ GameEngine::GameEngine(QObject* parent)
     connect(m_session, &LanSession::peerJoined, this, &GameEngine::onPeerConnectedChanged);
     connect(m_session, &LanSession::peerLost, this, &GameEngine::onPeerLost);
     connect(m_session, &LanSession::connectionFailed, this, &GameEngine::onConnectionFailed);
-    connect(m_session, &LanSession::messageReceived, this,
-            [this](int, const QVariantMap& message) { onNetworkMessage(message); });
+    connect(m_session, &LanSession::messageReceived, this, &GameEngine::onNetworkMessage);
 
     loadSettings();
     m_freshGame = !restoreGame();
@@ -647,13 +646,14 @@ void GameEngine::hostLanGame()
 
 void GameEngine::joinLanGame(const QString& address)
 {
-    const QString trimmed = address.trimmed();
+    const QString trimmed = LanSession::normalizeAddress(address);
     if (networkGame() || trimmed.isEmpty())
         return;
     setLanAddress(trimmed);
-    m_session->joinHost(trimmed);
+    // Set before connecting: a connection that fails at once overwrites it.
     m_networkStatus = tr("Connecting to %1…").arg(trimmed);
     emit networkChanged();
+    m_session->joinHost(trimmed);
 }
 
 void GameEngine::cancelLan()
@@ -708,7 +708,7 @@ void GameEngine::onConnectionFailed(const QString& reason)
     emit networkChanged();
 }
 
-void GameEngine::onNetworkMessage(const QVariantMap& message)
+void GameEngine::onNetworkMessage(int peer, const QVariantMap& message)
 {
     const QString type = message.value(QStringLiteral("t")).toString();
     const LanSession::Role role = m_session->role();
@@ -716,11 +716,21 @@ void GameEngine::onNetworkMessage(const QVariantMap& message)
     if (role == LanSession::Host && type == QLatin1String("hello")) {
         if (networkGame())
             return;
+        if (message.value(QStringLiteral("kind")).toString() == QLatin1String("multi")) {
+            // A 3/4-player app joined this two-player table: send it over to
+            // the right mode and keep waiting for an opponent.
+            QVariantMap reply;
+            reply.insert(QStringLiteral("t"), QStringLiteral("mode"));
+            reply.insert(QStringLiteral("players"), 2);
+            m_session->sendTo(peer, reply);
+            m_session->dropPeer(peer);
+            return;
+        }
         if (message.value(QStringLiteral("v")).toInt() != kLanProtocolVersion) {
             QVariantMap reply;
             reply.insert(QStringLiteral("t"), QStringLiteral("version"));
-            m_session->send(reply);
-            m_session->stop();
+            m_session->sendTo(peer, reply);
+            m_session->dropPeer(peer);
             m_networkStatus = tr("The other phone has an incompatible Snapszer version");
             emit networkChanged();
             return;
@@ -775,6 +785,15 @@ void GameEngine::onNetworkMessage(const QVariantMap& message)
         emit networkChanged();
         emit stateChanged();
         startDealAnimation(initialDealList(), 1 - m_core.dealer());
+        return;
+    }
+
+    if (role == LanSession::Guest && !networkGame() && type == QLatin1String("mode")) {
+        const QString address = m_lanAddress;
+        m_session->stop();
+        m_networkStatus.clear();
+        emit networkChanged();
+        emit lanRedirect(address, message.value(QStringLiteral("players")).toInt());
         return;
     }
 

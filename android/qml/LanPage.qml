@@ -6,26 +6,40 @@ SubPage {
 
     property var engine: snapszerEngine
     property var multi: multiEngine
-    property string pendingAddress: ""
+    // Which engine the last host or join went to, for the status line.
+    property bool useMulti: false
     readonly property bool busy: engine.lanBusy || multi.lanBusy
-    readonly property string statusText: multi.lanBusy || (!engine.lanBusy && multi.networkStatus !== "")
-                                         ? multi.networkStatus : engine.networkStatus
+    readonly property string statusText: useMulti ? multi.networkStatus : engine.networkStatus
+    readonly property string internetAddress: lanBrowser.internetAddresses.split("\n")[0]
 
     title: qsTr("LAN game")
 
+    // Only one engine hosts or joins at a time; the other one is reset so an
+    // old status of it cannot linger.
     function join(address, players) {
-        if (players > 2)
+        useMulti = players > 2
+        if (useMulti) {
+            if (!engine.networkGame)
+                engine.cancelLan()
             multi.joinLanGame(address)
-        else
+        } else {
+            if (!multi.networkGame)
+                multi.cancelLan()
             engine.joinLanGame(address)
+        }
     }
 
-    // An address typed by hand is asked for its table size first; an app of
-    // the first LAN release does not answer that, so fall back to two players.
-    function connectTo(address) {
-        pendingAddress = address.trim()
-        lanBrowser.probe(pendingAddress)
-        probeTimeout.restart()
+    function host(players) {
+        useMulti = players > 2
+        if (useMulti) {
+            if (!engine.networkGame)
+                engine.cancelLan()
+            multi.hostLanGame(players)
+        } else {
+            if (!multi.networkGame)
+                multi.cancelLan()
+            engine.hostLanGame()
+        }
     }
 
     Component.onCompleted: lanBrowser.search()
@@ -37,25 +51,15 @@ SubPage {
             multi.cancelLan()
     }
 
-    Timer {
-        id: probeTimeout
-        interval: 2500
-        onTriggered: {
-            if (page.pendingAddress !== "")
-                page.join(page.pendingAddress, 2)
-            page.pendingAddress = ""
-        }
-    }
-
+    // A typed address is joined as a two-player game first; a host with a
+    // bigger table answers with its size and the join is repeated.
     Connections {
-        target: lanBrowser
-        function onHostFound(address, name, players, openSeats) {
-            if (address !== page.pendingAddress)
-                return
-            probeTimeout.stop()
-            page.pendingAddress = ""
-            page.join(address, players)
-        }
+        target: page.engine
+        function onLanRedirect(address, players) { page.join(address, players) }
+    }
+    Connections {
+        target: page.multi
+        function onLanRedirect(address, players) { page.join(address, players) }
     }
 
     Connections {
@@ -98,7 +102,7 @@ SubPage {
     }
 
     Repeater {
-        model: page.multi.lobby
+        model: page.multi.lanBusy ? page.multi.lobby : []
         TextBlock {
             x: Theme.horizontalPageMargin * 2
             text: qsTr("Seat %1: %2").arg(index + 1).arg(modelData.taken ? modelData.name : qsTr("free (computer)"))
@@ -140,12 +144,7 @@ SubPage {
         anchors.horizontalCenter: parent.horizontalCenter
         enabled: !page.busy
         text: qsTr("Host")
-        onClicked: {
-            if (playersBox.currentIndex === 0)
-                page.engine.hostLanGame()
-            else
-                page.multi.hostLanGame(playersBox.currentIndex + 2)
-        }
+        onClicked: page.host(playersBox.currentIndex + 2)
     }
 
     TextBlock {
@@ -154,6 +153,37 @@ SubPage {
         text: lanBrowser.localAddresses !== ""
               ? qsTr("Address of this phone: %1").arg(lanBrowser.localAddresses)
               : qsTr("This phone is not connected to a network")
+    }
+
+    ItemDelegate {
+        width: page.width
+        visible: page.internetAddress !== ""
+        leftPadding: Theme.horizontalPageMargin
+        rightPadding: Theme.horizontalPageMargin
+        contentItem: Column {
+            spacing: 2
+            Label {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                text: qsTr("For play over the internet (IPv6), tap to copy:")
+            }
+            Label {
+                width: parent.width
+                wrapMode: Text.WrapAnywhere
+                font.pixelSize: Theme.fontSizeExtraSmall
+                text: page.internetAddress
+            }
+            Label {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeTiny
+                color: Theme.secondaryColor
+                text: qsTr("Works when both networks support IPv6 and allow incoming connections. Over IPv4 the host must be reachable by other means, e.g. a VPN.")
+            }
+        }
+        onClicked: lanBrowser.copyToClipboard(page.internetAddress)
     }
 
     SectionLabel { text: qsTr("Join a game") }
@@ -189,16 +219,16 @@ SubPage {
         id: addressField
         x: Theme.horizontalPageMargin
         width: parent.width - 2 * Theme.horizontalPageMargin
-        placeholderText: qsTr("e.g. 192.168.1.23")
+        placeholderText: qsTr("e.g. 192.168.1.23 or an IPv6 address")
         text: page.engine.lanAddress
-        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase | Qt.ImhPreferNumbers
-        onAccepted: page.connectTo(text)
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+        onAccepted: page.join(text, 2)
     }
 
     Button {
         anchors.horizontalCenter: parent.horizontalCenter
         enabled: addressField.text.trim().length > 0 && !page.busy
         text: qsTr("Connect")
-        onClicked: page.connectTo(addressField.text)
+        onClicked: page.join(addressField.text, 2)
     }
 }

@@ -45,7 +45,12 @@ public:
     void sendTo(int peer, const QVariantMap& message);
     void dropPeer(int peer);
 
+    // IPv4 addresses for the local network, and global IPv6 addresses under
+    // which the device may be reachable from the internet.
     static QStringList localAddresses();
+    static QStringList internetAddresses();
+    // Trims spaces and the brackets people type around IPv6 addresses.
+    static QString normalizeAddress(const QString& address);
 
 signals:
     void peerConnectedChanged();
@@ -92,6 +97,7 @@ class LanBrowser : public QObject
     Q_OBJECT
     Q_PROPERTY(QVariantList hosts READ hosts NOTIFY hostsChanged)
     Q_PROPERTY(QString localAddresses READ localAddresses NOTIFY hostsChanged)
+    Q_PROPERTY(QString internetAddresses READ internetAddresses NOTIFY hostsChanged)
     Q_PROPERTY(bool searching READ searching NOTIFY searchingChanged)
 
 public:
@@ -100,19 +106,18 @@ public:
 
     QVariantList hosts() const { return m_hosts; }
     QString localAddresses() const { return LanSession::localAddresses().join(QStringLiteral(", ")); }
+    QString internetAddresses() const { return LanSession::internetAddresses().join(QStringLiteral("\n")); }
     bool searching() const { return m_searching; }
 
     Q_INVOKABLE void search();
-    Q_INVOKABLE void probe(const QString& address);
+    Q_INVOKABLE void copyToClipboard(const QString& text);
 
 signals:
     void hostsChanged();
     void searchingChanged();
-    void hostFound(const QString& address, const QString& name, int players, int openSeats);
 
 private:
     bool ensureSocket();
-    void startProbing();
     void sendProbes();
     void readReplies();
     void finish();
@@ -123,6 +128,5 @@ private:
     int m_probesLeft = 0;
     bool m_searching = false;
     bool m_lockHeld = false;
-    QString m_directAddress;
     QVariantList m_hosts;
 };

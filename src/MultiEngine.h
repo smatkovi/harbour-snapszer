@@ -126,6 +126,9 @@ signals:
     void networkNotice(const QString& text);
     void resetVisuals();
     void matchStarted();
+    // The host at `address` runs a table of a different size; join it with
+    // the engine for `players`.
+    void lanRedirect(const QString& address, int players);
     void cardAnimationRequested(const QString& cardId, int seat);
     void trickAnimationRequested(int winnerSeat);
 
@@ -189,4 +192,5 @@ private:
     bool m_awaitingHost = false;
     int m_netSeq = 0;
     QString m_networkStatus;
+    QString m_joinAddress;
 };

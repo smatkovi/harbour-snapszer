@@ -235,6 +235,16 @@ ApplicationWindow {
                     multiEngine.resume()
             }
 
+            // A running 3/4-player match is only replaced after a countdown.
+            function startMulti(action) {
+                if (multiEngine.active && !multiEngine.matchOver)
+                    newMatchRemorse.execute(qsTr("Replacing the running 3/4-player match"), function() {
+                        mainPage.requestPulleyAction(action)
+                    })
+                else
+                    requestPulleyAction(action)
+            }
+
             function askMarriage(index, value, sx, sy) {
                 marriagePanel.handIndex = index
                 marriagePanel.marriageValue = value
@@ -287,23 +297,24 @@ ApplicationWindow {
                     }
                     MenuItem {
                         text: qsTr("Play over LAN")
-                        visible: !engine.networkGame
+                        visible: !engine.networkGame && !multiEngine.networkGame
                         onClicked: pageStack.push(Qt.resolvedUrl("LanPage.qml"))
                     }
                     MenuItem {
-                        text: qsTr("Continue 3/4-player match")
+                        text: multiEngine.active ? qsTr("Back to 3/4-player table")
+                                                 : qsTr("Continue 3/4-player match")
                         visible: !engine.networkGame && multiEngine.canResume
                         onClicked: mainPage.requestPulleyAction("multiResume")
                     }
                     MenuItem {
                         text: qsTr("Play with 3 players")
-                        visible: !engine.networkGame
-                        onClicked: mainPage.requestPulleyAction("multi3")
+                        visible: !engine.networkGame && !multiEngine.networkGame
+                        onClicked: mainPage.startMulti("multi3")
                     }
                     MenuItem {
                         text: qsTr("Play with 4 players")
-                        visible: !engine.networkGame
-                        onClicked: mainPage.requestPulleyAction("multi4")
+                        visible: !engine.networkGame && !multiEngine.networkGame
+                        onClicked: mainPage.startMulti("multi4")
                     }
                     MenuItem {
                         text: qsTr("New match")

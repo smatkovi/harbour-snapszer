@@ -1,6 +1,8 @@
 #include "LanSession.h"
 
+#include <QClipboard>
 #include <QDateTime>
+#include <QGuiApplication>
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -70,15 +72,30 @@ void releaseMulticastLock() {}
 // Newer Android versions hide most interface details from apps. Asking the
 // kernel which source address it would use for an outside route still works
 // and sends no packet.
-QHostAddress routedLocalAddress()
+QHostAddress routedAddress(const QString& outside)
 {
     QUdpSocket probe;
-    probe.connectToHost(QHostAddress(QStringLiteral("8.8.8.8")), 53);
+    probe.connectToHost(QHostAddress(outside), 53);
     const QHostAddress address = probe.localAddress();
     probe.abort();
+    return address;
+}
+
+QHostAddress routedLocalAddress()
+{
+    const QHostAddress address = routedAddress(QStringLiteral("8.8.8.8"));
     if (address.protocol() != QAbstractSocket::IPv4Protocol || address.isLoopback())
         return QHostAddress();
     return address;
+}
+
+// Global unicast IPv6 (2000::/3), i.e. not link-local, unique-local or loopback.
+bool isGlobalIPv6(const QHostAddress& address)
+{
+    if (address.protocol() != QAbstractSocket::IPv6Protocol)
+        return false;
+    const Q_IPV6ADDR bytes = address.toIPv6Address();
+    return (bytes[0] & 0xe0) == 0x20;
 }
 
 QString plainAddress(const QHostAddress& address)
@@ -181,7 +198,7 @@ void LanSession::joinHost(const QString& address)
             this, onError);
 #endif
     m_connectTimer.start(kConnectTimeout);
-    socket->connectToHost(address.trimmed(), GamePort);
+    socket->connectToHost(normalizeAddress(address), GamePort);
 }
 
 void LanSession::stop()
@@ -197,8 +214,13 @@ void LanSession::stop()
         m_pendingSocket = nullptr;
     }
     while (!m_peers.isEmpty()) {
-        m_peers.first().socket->flush();
-        removePeer(m_peers.first().id, false);
+        // Detach first: a synchronous disconnected() during flush() must not
+        // re-enter removePeer() or emit peerLost while shutting down.
+        const Peer peer = m_peers.takeFirst();
+        peer.socket->disconnect(this);
+        peer.socket->flush();
+        peer.socket->abort();
+        peer.socket->deleteLater();
     }
     m_server.close();
     if (m_responder) {
@@ -234,10 +256,20 @@ void LanSession::sendTo(int peer, const QVariantMap& message)
 
 void LanSession::dropPeer(int peer)
 {
-    if (Peer* target = findPeer(peer)) {
-        target->socket->flush();
-        removePeer(peer, false);
+    for (int i = 0; i < m_peers.size(); ++i) {
+        if (m_peers[i].id != peer)
+            continue;
+        // Close gracefully so a last message (e.g. why the peer is dropped)
+        // still reaches it.
+        QTcpSocket* socket = m_peers[i].socket;
+        m_peers.removeAt(i);
+        socket->disconnect(this);
+        connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+        socket->disconnectFromHost();
+        if (socket->state() == QAbstractSocket::UnconnectedState)
+            socket->deleteLater();
         emit peerConnectedChanged();
+        return;
     }
 }
 
@@ -261,6 +293,37 @@ QStringList LanSession::localAddresses()
         if (!routed.isNull())
             result.append(routed.toString());
     }
+    return result;
+}
+
+QStringList LanSession::internetAddresses()
+{
+    QStringList result;
+    const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
+    for (const QNetworkInterface& iface : interfaces) {
+        const QNetworkInterface::InterfaceFlags flags = iface.flags();
+        if (!(flags & QNetworkInterface::IsUp) || !(flags & QNetworkInterface::IsRunning)
+            || (flags & QNetworkInterface::IsLoopBack))
+            continue;
+        const QList<QNetworkAddressEntry> entries = iface.addressEntries();
+        for (const QNetworkAddressEntry& entry : entries) {
+            if (isGlobalIPv6(entry.ip()))
+                result.append(entry.ip().toString());
+        }
+    }
+    const QHostAddress routed = routedAddress(QStringLiteral("2001:4860:4860::8888"));
+    if (isGlobalIPv6(routed) && !result.contains(routed.toString()))
+        result.prepend(routed.toString()); // the address actually used for outgoing traffic
+    while (result.size() > 3)
+        result.removeLast();
+    return result;
+}
+
+QString LanSession::normalizeAddress(const QString& address)
+{
+    QString result = address.trimmed();
+    if (result.startsWith(QLatin1Char('[')) && result.endsWith(QLatin1Char(']')))
+        result = result.mid(1, result.size() - 2);
     return result;
 }
 
@@ -424,25 +487,16 @@ bool LanBrowser::ensureSocket()
     return true;
 }
 
+void LanBrowser::copyToClipboard(const QString& text)
+{
+    if (QClipboard* clipboard = QGuiApplication::clipboard())
+        clipboard->setText(text);
+}
+
 void LanBrowser::search()
 {
-    m_directAddress.clear();
     m_hosts.clear();
     emit hostsChanged();
-    startProbing();
-}
-
-void LanBrowser::probe(const QString& address)
-{
-    const QHostAddress host(address.trimmed());
-    if (host.isNull())
-        return;
-    m_directAddress = host.toString();
-    startProbing();
-}
-
-void LanBrowser::startProbing()
-{
     if (!ensureSocket())
         return;
     if (!m_lockHeld) {
@@ -468,9 +522,7 @@ void LanBrowser::sendProbes()
         m_socket->writeDatagram(kProbeV2, target, LanSession::DiscoveryPort);
         m_socket->writeDatagram(kProbeV1, target, LanSession::DiscoveryPort);
     };
-    if (!m_directAddress.isEmpty()) {
-        sendTo(QHostAddress(m_directAddress));
-    } else {
+    {
         sendTo(QHostAddress(QHostAddress::Broadcast));
         bool directed = false;
         const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
@@ -538,7 +590,7 @@ void LanBrowser::readReplies()
             continue;
         }
         const QString address = plainAddress(sender);
-        if (m_directAddress.isEmpty() && own.contains(address))
+        if (own.contains(address))
             continue;
         bool known = false;
         for (int i = 0; i < m_hosts.size(); ++i) {
@@ -562,6 +614,5 @@ void LanBrowser::readReplies()
             m_hosts.append(host);
         }
         emit hostsChanged();
-        emit hostFound(address, name.left(32), players, openSeats);
     }
 }

@@ -81,18 +81,26 @@ int main(int argc, char** argv)
     for (MultiEngine* e : {&host, &guestA, &guestB})
         QObject::connect(e, &MultiEngine::networkNotice, [&](const QString& t) { ++notices; std::printf("notice: %s\n", qPrintable(t)); });
 
-    LanBrowser browser;
     QElapsedTimer t;
     host.hostLanGame(players);
-    browser.probe("127.0.0.1");
-    t.start();
-    while (t.elapsed() < 3000 && browser.hosts().isEmpty())
-        app.processEvents(QEventLoop::AllEvents, 20);
-    for (const QVariant& h : browser.hosts())
-        std::printf("browser: %s players %d open %d\n", qPrintable(h.toMap()["name"].toString()),
-                    h.toMap()["players"].toInt(), h.toMap()["openSeats"].toInt());
 
-    guestA.joinLanGame("127.0.0.1");
+    // A two-player app typing the host's address is told the table size.
+    GameEngine twoPlayer;
+    int redirectedTo = 0;
+    QObject::connect(&twoPlayer, &GameEngine::lanRedirect, [&](const QString& address, int size) {
+        std::printf("redirect from two-player join to %s with %d players\n", qPrintable(address), size);
+        redirectedTo = size;
+    });
+    twoPlayer.joinLanGame("[::1]");
+    t.start();
+    while (t.elapsed() < 3000 && redirectedTo == 0)
+        app.processEvents(QEventLoop::AllEvents, 20);
+    if (redirectedTo != players) {
+        std::printf("FAIL: no redirect to the %d-player table\n", players);
+        return 1;
+    }
+
+    guestA.joinLanGame("::1"); // IPv6
     t.restart();
     while (t.elapsed() < 3000 && host.lobby().size() && !host.lobby()[1].toMap()["taken"].toBool())
         app.processEvents(QEventLoop::AllEvents, 20);

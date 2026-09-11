@@ -139,7 +139,9 @@ void MultiEngine::persist()
 
 bool MultiEngine::canResume() const
 {
-    if (m_active || networkGame())
+    if (m_active)
+        return true;
+    if (networkGame())
         return false;
     QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
     return settings.contains(QStringLiteral("multi/autosave-v1"));
@@ -217,7 +219,11 @@ void MultiEngine::startMatch(int players)
 
 void MultiEngine::resume()
 {
-    if (m_active || networkGame())
+    if (m_active) {
+        emit matchStarted(); // back to the running table
+        return;
+    }
+    if (networkGame())
         return;
     QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
     const QByteArray saved = QByteArray::fromBase64(settings.value(QStringLiteral("multi/autosave-v1")).toString().toLatin1());
@@ -292,6 +298,14 @@ void MultiEngine::completeCardAnimation()
     if (m_visualPhase != CardFlight)
         return;
     m_watchdog.stop();
+    if (m_mode != Mode::Guest && m_core.trick().size() == 1) {
+        const int leader = m_core.trick().front().playedBy;
+        if (m_core.canClaim(leader)) {
+            setVisualPhase(Idle);
+            perform(leader, {MultiActionType::Claim, -1, false});
+            return;
+        }
+    }
     if (m_core.trickPending()) {
         setVisualPhase(TrickPause);
         emit stateChanged();
@@ -361,8 +375,16 @@ void MultiEngine::scheduleComputer()
         }
     }
     const int actor = m_core.actor();
-    if (actor > 0 && seatIsComputer(actor))
-        m_aiTimer.start(m_settings->aiPlayDelay());
+    if (actor > 0 && seatIsComputer(actor)) {
+        // Give a person whose side could call 66 time to do it before a
+        // computer plays on, also on a guest that is still animating.
+        bool humanMayClaim = false;
+        for (int seat = 0; seat < m_core.players(); ++seat) {
+            if (!seatIsComputer(seat) && m_core.canClaim(seat))
+                humanMayClaim = true;
+        }
+        m_aiTimer.start(humanMayClaim ? qMax(m_settings->aiPlayDelay(), 3000) : m_settings->aiPlayDelay());
+    }
 }
 
 void MultiEngine::runComputer()
@@ -409,14 +431,14 @@ void MultiEngine::nextRound()
 
 void MultiEngine::newMatch()
 {
-    if (!m_active || m_visualPhase != Idle)
+    if (!m_active)
         return;
     if (m_mode == Mode::Local) {
         startMatch(m_core.players());
         return;
     }
     if (m_mode == Mode::Guest) {
-        if (!m_awaitingHost && m_core.matchOver()) {
+        if (m_visualPhase == Idle && !m_awaitingHost && m_core.matchOver()) {
             QVariantMap message;
             message.insert(QStringLiteral("t"), QStringLiteral("req"));
             message.insert(QStringLiteral("s"), m_netSeq);
@@ -427,6 +449,10 @@ void MultiEngine::newMatch()
         }
         return;
     }
+    m_aiTimer.stop();
+    m_trickPauseTimer.stop();
+    m_watchdog.stop();
+    m_remoteQueue.clear();
     m_core.newMatch(m_core.variant(), freshSeed());
     sendToGuests(QStringLiteral("deal"), QVariantMap());
     emit resetVisuals();
@@ -604,6 +630,8 @@ QVariantList MultiEngine::options() const
                 add(QStringLiteral("pass"), -1, tr("Normal game"));
             else if (m_core.phase() == MultiPhase::Doubling)
                 add(QStringLiteral("pass"), -1, tr("Continue"));
+            else if (m_core.forehand() == 0 && m_core.bidHolder() == 0 && m_core.contract() == Contract::Normal)
+                add(QStringLiteral("pass"), -1, tr("Normal game"));
             else
                 add(QStringLiteral("pass"), -1, tr("Pass"));
             break;
@@ -692,6 +720,8 @@ bool MultiEngine::lanBusy() const
 QVariantList MultiEngine::lobby() const
 {
     QVariantList result;
+    if (!lanBusy())
+        return result;
     for (int seat = 0; seat < m_seatNames.size(); ++seat) {
         QVariantMap entry;
         const bool taken = seat == 0 || (seat < m_seatPeers.size() && m_seatPeers[seat] >= 0);
@@ -728,15 +758,17 @@ void MultiEngine::hostLanGame(int players)
 
 void MultiEngine::joinLanGame(const QString& address)
 {
-    const QString trimmed = address.trimmed();
+    const QString trimmed = LanSession::normalizeAddress(address);
     if (networkGame() || trimmed.isEmpty())
         return;
     m_lobbyOpen = false;
     m_seatNames.clear();
-    m_session->joinHost(trimmed);
+    m_joinAddress = trimmed;
     m_settings->setLanAddress(trimmed);
+    // Set before connecting: a connection that fails at once overwrites it.
     m_networkStatus = tr("Connecting to %1…").arg(trimmed);
     emit networkChanged();
+    m_session->joinHost(trimmed);
 }
 
 void MultiEngine::cancelLan()
@@ -882,8 +914,15 @@ void MultiEngine::onMessage(int peer, const QVariantMap& message)
     if (m_session->role() == LanSession::Host) {
         if (type == QLatin1String("hello")) {
             QVariantMap reply;
-            if (message.value(QStringLiteral("v")).toInt() != kProtocolVersion
-                || message.value(QStringLiteral("kind")).toString() != QLatin1String("multi")) {
+            if (message.value(QStringLiteral("kind")).toString() != QLatin1String("multi")) {
+                // A two-player app: tell it the size of this table.
+                reply.insert(QStringLiteral("t"), QStringLiteral("mode"));
+                reply.insert(QStringLiteral("players"), m_hostPlayers);
+                m_session->sendTo(peer, reply);
+                m_session->dropPeer(peer);
+                return;
+            }
+            if (message.value(QStringLiteral("v")).toInt() != kProtocolVersion) {
                 reply.insert(QStringLiteral("t"), QStringLiteral("version"));
                 m_session->sendTo(peer, reply);
                 m_session->dropPeer(peer);
@@ -955,6 +994,14 @@ void MultiEngine::onMessage(int peer, const QVariantMap& message)
         emit matchStarted();
         emit networkChanged();
         finishIdle();
+        return;
+    }
+    if (type == QLatin1String("mode")) {
+        const int players = message.value(QStringLiteral("players")).toInt();
+        m_session->stop();
+        m_networkStatus.clear();
+        emit networkChanged();
+        emit lanRedirect(m_joinAddress, players);
         return;
     }
     if (type == QLatin1String("busy") || type == QLatin1String("version")) {
@@ -1114,6 +1161,8 @@ void MultiEngine::leaveNetwork(const QString& notice)
     m_remoteQueue.clear();
     m_awaitingHost = false;
     m_seatPeers.clear();
+    m_seatNames.clear();
+    m_seatHuman.clear();
     m_networkStatus = notice;
     if (wasNetwork) {
         m_aiTimer.stop();

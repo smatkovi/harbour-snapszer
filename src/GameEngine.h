@@ -148,6 +148,9 @@ signals:
     void networkChanged();
     void networkNotice(const QString& text);
     void resetVisuals();
+    // The host at `address` runs a table of a different size; join it with
+    // the engine for `players`.
+    void lanRedirect(const QString& address, int players);
     void visualPhaseChanged();
     void pausedChanged();
     void cardAnimationRequested(const QString& cardId, int playedBy, int oldHandIndex);
@@ -188,7 +191,7 @@ private:
     void onPeerConnectedChanged();
     void onPeerLost();
     void onConnectionFailed(const QString& reason);
-    void onNetworkMessage(const QVariantMap& message);
+    void onNetworkMessage(int peer, const QVariantMap& message);
     void processRemoteQueue();
     void hostHandleRequest(const QVariantMap& message);
     void guestHandleMessage(const QVariantMap& message);

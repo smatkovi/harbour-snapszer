@@ -465,11 +465,13 @@ void MultiCore::startBidding()
     m_contract = Contract::Normal;
     m_bidHolder = forehand(); // the forehand may not pass the normal game
     m_passedMask = 0;
-    m_turn = next(forehand());
+    m_turn = forehand();
 }
 
 void MultiCore::finishBidding()
 {
+    if (m_bidHolder < 0 || m_bidHolder >= m_players)
+        m_bidHolder = forehand();
     m_declarer = m_bidHolder;
     m_turn = -1;
     if (m_variant == MultiVariant::AustrianFour
@@ -495,13 +497,23 @@ bool MultiCore::doublingEligible(int seat) const
     return (m_doublingStep % 2 == 0) ? !inDeclarerParty(seat) : inDeclarerParty(seat);
 }
 
+// Who is asked is not always who may double: in the Hungarian four-player
+// game every seat except the hívó is asked on each step (and the hívó on the
+// Rekontra step), so the order never shows where the secret partner sits.
+bool MultiCore::doublingAsked(int seat) const
+{
+    if (m_variant == MultiVariant::HungarianFour)
+        return isActive(seat) && (seat != m_declarer || m_doublingStep % 2 == 1);
+    return doublingEligible(seat);
+}
+
 int MultiCore::doublingActor() const
 {
     if (m_phase != MultiPhase::Doubling)
         return -1;
     for (int i = 0; i < m_players; ++i) {
         const int seat = (forehand() + i) % m_players;
-        if (doublingEligible(seat) && !((m_doublingAskedMask >> seat) & 1))
+        if (doublingAsked(seat) && !((m_doublingAskedMask >> seat) & 1))
             return seat;
     }
     return -1;
@@ -660,7 +672,8 @@ std::vector<MultiAction> MultiCore::legalActions(int seat) const
         break;
     case MultiPhase::Doubling:
         if (seat == doublingActor()) {
-            actions.push_back({MultiActionType::Double, -1, false});
+            if (doublingEligible(seat))
+                actions.push_back({MultiActionType::Double, -1, false});
             actions.push_back({MultiActionType::Pass, -1, false});
         }
         break;
@@ -734,7 +747,9 @@ bool MultiCore::apply(int seat, const MultiAction& action)
         if (action.type == MultiActionType::Bid) {
             m_contract = static_cast<Contract>(action.value);
             m_bidHolder = seat;
-        } else {
+        } else if (!(seat == forehand() && m_bidHolder == seat && m_contract == Contract::Normal)) {
+            // The forehand's opening pass means "normal game": he keeps it
+            // and stays in the bidding.
             m_passedMask |= 1 << seat;
         }
         {
@@ -999,10 +1014,14 @@ int MultiCore::aiChoosePlay(int seat)
 
     const bool declarerSide = inDeclarerParty(seat);
     const bool bettlerDeclarer = m_contract == Contract::Bettler && seat == m_declarer;
-    const bool mustTakeAll = (isAllTricksContract() || isSchnapserContract()) && declarerSide;
+    // In the Austrian games the declarer must take these tricks himself, so
+    // his partner has to stay low instead of winning them.
+    const bool austrianHelper = !hungarian() && declarerSide && seat != m_declarer
+        && (isAllTricksContract() || isSchnapserContract());
+    const bool mustTakeAll = (isAllTricksContract() || isSchnapserContract()) && declarerSide && !austrianHelper;
 
     if (m_trick.empty()) {
-        if (bettlerDeclarer || m_contract == Contract::Bettler)
+        if (bettlerDeclarer || m_contract == Contract::Bettler || austrianHelper)
             return byStrength(false);
         if (mustTakeAll)
             return byStrength(true);
@@ -1036,7 +1055,7 @@ int MultiCore::aiChoosePlay(int seat)
         }
         return cheapest(winning);
     }
-    if (m_contract == Contract::Bettler)
+    if (m_contract == Contract::Bettler || austrianHelper)
         return losing.empty() ? cheapest(winning) : cheapest(losing);
     if (mustTakeAll || (!declarerSide && (isAllTricksContract() || isSchnapserContract())))
         return winning.empty() ? cheapest(legal) : cheapest(winning);
@@ -1149,8 +1168,9 @@ MultiAction MultiCore::chooseAiAction(int seat)
                 aces += card.rank == 14;
                 trumps += card.suit == m_chosenTrump;
             }
-            if (aces >= 2 && trumps >= 3 && (m_rng() % 3U) == 0)
-                return {MultiActionType::Double, -1, false};
+            const MultiAction doubleIt{MultiActionType::Double, -1, false};
+            if (aces >= 2 && trumps >= 3 && isLegal(seat, doubleIt) && (m_rng() % 3U) == 0)
+                return doubleIt;
         }
         return {MultiActionType::Pass, -1, false};
     }
@@ -1324,6 +1344,27 @@ bool MultiCore::validate(std::string* error) const
         return fail("inconsistent pending trick");
     if (m_doubling != 1 && m_doubling != 2 && m_doubling != 4 && m_doubling != 8)
         return fail("invalid doubling");
+    if (m_passedMask >= (1 << m_players) || m_doublingAskedMask >= (1 << m_players)
+        || m_roundWinnerMask >= (1 << m_players) || m_passedMask < 0 || m_doublingAskedMask < 0)
+        return fail("invalid seat mask");
+    if (m_phase == MultiPhase::Bidding
+        && (m_bidHolder < 0 || m_turn < 0 || ((m_passedMask >> m_turn) & 1) || ((m_passedMask >> m_bidHolder) & 1)))
+        return fail("inconsistent bidding");
+    if ((m_phase == MultiPhase::Talon || m_phase == MultiPhase::Doubling || m_phase == MultiPhase::Play)
+        && m_declarer < 0)
+        return fail("missing declarer");
+    if (m_phase == MultiPhase::Play && m_turn < 0 && !m_trickPending)
+        return fail("nobody to play");
+    if (m_phase == MultiPhase::CallCard || m_phase == MultiPhase::ChooseTrump) {
+        if (m_declarer >= 0 || !m_trick.empty())
+            return fail("inconsistent opening");
+    }
+    if (m_variant == MultiVariant::HungarianFour && m_calledCard >= 0 && m_calledHolder < 0)
+        return fail("called card without holder");
+    if (m_sittingOut >= 0 && m_variant != MultiVariant::AustrianFour)
+        return fail("nobody sits out in this game");
+    if (m_tricksTotal != handSize() || m_tricksPlayed < 0 || m_tricksPlayed > m_tricksTotal)
+        return fail("invalid trick count");
 
     const std::size_t deckSize = hungarian() ? 24 : 20;
     std::set<int> seen;

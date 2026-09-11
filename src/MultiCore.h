@@ -179,6 +179,7 @@ private:
     bool outbids(int seat, Contract contract) const;
     int doublingActor() const;
     bool doublingEligible(int seat) const;
+    bool doublingAsked(int seat) const;
 
     void dealRound();
     void dealSecondPacket();

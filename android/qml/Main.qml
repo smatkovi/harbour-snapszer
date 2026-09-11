@@ -46,7 +46,10 @@ ApplicationWindow {
     onClosing: (close) => {
         if (stack.depth > 1) {
             close.accepted = false
-            stack.pop()
+            if (stack.currentItem.objectName === "multiPage" && multiEngine.networkGame)
+                stack.currentItem.confirmLeave()
+            else
+                stack.pop()
         }
     }
 }
