@@ -29,10 +29,10 @@ ApplicationWindow {
 
     // A LAN connection must survive the opponent's thinking time, so keep the
     // screen on while playing and the device awake while in the background.
-    DisplayBlanking {
-        preventBlanking: (engine.networkGame || multiEngine.networkGame) && Qt.application.active
-    }
-    KeepAlive { enabled: engine.networkGame || multiEngine.networkGame }
+    readonly property bool lanActive: engine.networkGame || multiEngine.networkGame
+                                      || engine.lanBusy || multiEngine.lanBusy
+    DisplayBlanking { preventBlanking: app.lanActive && Qt.application.active }
+    KeepAlive { enabled: app.lanActive }
 
     // Three- and four-player matches (local or LAN) open their own table on
     // top of the two-player one.

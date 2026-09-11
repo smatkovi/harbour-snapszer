@@ -1,6 +1,6 @@
 Name: harbour-snapszer
 Version: 1.1.0
-Release: 1
+Release: 2
 Summary: Classic Hungarian Snapszer card game
 License: MIT
 URL: https://github.com/edp17/harbour-snapszer
@@ -66,6 +66,9 @@ install -m 644 LICENSE %{buildroot}/usr/share/licenses/%{name}/
 /usr/share/licenses/%{name}
 
 %changelog
+* Fri Sep 11 2026 smatkovi - 1.1.0-2
+- Keep the device awake while hosting or joining a LAN game
+
 * Fri Sep 11 2026 smatkovi - 1.1.0-1
 - Three- and four-player games: Hungarian hármas and négyes snapszer, Dreierschnapsen, Bauernschnapsen
 - LAN tables for up to four devices, empty seats played by the computer, joins over IPv6

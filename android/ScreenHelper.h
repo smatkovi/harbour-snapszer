@@ -7,8 +7,9 @@
 #include <QJniObject>
 #endif
 
-// Keeps the display on while a LAN game runs, so the connection is not lost
-// while the opponent thinks.
+// While a LAN game is hosted, joined or played: keeps the display on and runs
+// a foreground service (LanService.java). Without it Android drops incoming
+// packets for the app as soon as it is in the background or the screen is off.
 class ScreenHelper : public QObject
 {
     Q_OBJECT
@@ -16,19 +17,22 @@ class ScreenHelper : public QObject
 public:
     using QObject::QObject;
 
-    void setKeepScreenOn(bool keep)
+    void setLanActive(bool active)
     {
-        if (keep == m_keepScreenOn)
+        if (active == m_lanActive)
             return;
-        m_keepScreenOn = keep;
+        m_lanActive = active;
 #ifdef Q_OS_ANDROID
-        QNativeInterface::QAndroidApplication::runOnAndroidMainThread([keep]() {
+        QJniObject context(QNativeInterface::QAndroidApplication::context().object());
+        QJniObject::callStaticMethod<void>("org/edp17/snapszer/LanService", active ? "start" : "stop",
+                                           "(Landroid/content/Context;)V", context.object());
+        QNativeInterface::QAndroidApplication::runOnAndroidMainThread([active]() {
             QJniObject activity(QNativeInterface::QAndroidApplication::context().object());
             QJniObject window = activity.callObjectMethod("getWindow", "()Landroid/view/Window;");
             if (!window.isValid())
                 return;
             const jint flagKeepScreenOn = 128; // WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-            if (keep)
+            if (active)
                 window.callMethod<void>("addFlags", "(I)V", flagKeepScreenOn);
             else
                 window.callMethod<void>("clearFlags", "(I)V", flagKeepScreenOn);
@@ -37,5 +41,5 @@ public:
     }
 
 private:
-    bool m_keepScreenOn = false;
+    bool m_lanActive = false;
 };

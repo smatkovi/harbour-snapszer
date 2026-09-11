@@ -90,11 +90,16 @@ set_target_properties(snapszer PROPERTIES
     QT_ANDROID_APP_ICON "@drawable/icon"
     QT_ANDROID_MIN_SDK_VERSION 28
     QT_ANDROID_TARGET_SDK_VERSION 36
-    QT_ANDROID_VERSION_CODE 2
+    QT_ANDROID_VERSION_CODE 3
     QT_ANDROID_VERSION_NAME "1.1.0"
 )
 if(ANDROID)
     # Broadcast discovery needs a Wi-Fi multicast lock on many devices.
     qt_add_android_permission(snapszer NAME android.permission.ACCESS_WIFI_STATE)
     qt_add_android_permission(snapszer NAME android.permission.CHANGE_WIFI_MULTICAST_STATE)
+    # Foreground service and Wi-Fi lock while a LAN game is hosted or played.
+    qt_add_android_permission(snapszer NAME android.permission.FOREGROUND_SERVICE)
+    qt_add_android_permission(snapszer NAME android.permission.FOREGROUND_SERVICE_SPECIAL_USE)
+    qt_add_android_permission(snapszer NAME android.permission.POST_NOTIFICATIONS)
+    qt_add_android_permission(snapszer NAME android.permission.WAKE_LOCK)
 endif()

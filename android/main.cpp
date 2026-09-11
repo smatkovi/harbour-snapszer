@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
     LanBrowser browser;
     ScreenHelper screen;
     const auto updateScreen = [&]() {
-        screen.setKeepScreenOn(engine.networkGame() || multi.networkGame());
+        screen.setLanActive(engine.networkGame() || multi.networkGame() || engine.lanBusy() || multi.lanBusy());
     };
     QObject::connect(&engine, &GameEngine::networkChanged, &screen, updateScreen);
     QObject::connect(&multi, &MultiEngine::networkChanged, &screen, updateScreen);
