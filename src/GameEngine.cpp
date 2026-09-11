@@ -654,6 +654,8 @@ void GameEngine::joinLanGame(const QString& address)
     m_networkStatus = tr("Connecting to %1…").arg(trimmed);
     emit networkChanged();
     m_session->joinHost(trimmed);
+    if (m_session->role() == LanSession::Guest)
+        emit networkChanged(); // now busy connecting
 }
 
 void GameEngine::cancelLan()

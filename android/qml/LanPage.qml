@@ -222,7 +222,10 @@ SubPage {
         placeholderText: qsTr("e.g. 192.168.1.23 or an IPv6 address")
         text: page.engine.lanAddress
         inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-        onAccepted: page.join(text, 2)
+        onAccepted: {
+            if (text.trim().length > 0 && !page.busy)
+                page.join(text, 2)
+        }
     }
 
     Button {

@@ -769,6 +769,8 @@ void MultiEngine::joinLanGame(const QString& address)
     m_networkStatus = tr("Connecting to %1…").arg(trimmed);
     emit networkChanged();
     m_session->joinHost(trimmed);
+    if (m_session->role() == LanSession::Guest)
+        emit networkChanged(); // now busy connecting
 }
 
 void MultiEngine::cancelLan()
@@ -919,6 +921,11 @@ void MultiEngine::onMessage(int peer, const QVariantMap& message)
                 reply.insert(QStringLiteral("t"), QStringLiteral("mode"));
                 reply.insert(QStringLiteral("players"), m_hostPlayers);
                 m_session->sendTo(peer, reply);
+                // Apps of the first LAN release ignore "mode" but understand
+                // this; newer apps have already switched and never read it.
+                QVariantMap version;
+                version.insert(QStringLiteral("t"), QStringLiteral("version"));
+                m_session->sendTo(peer, version);
                 m_session->dropPeer(peer);
                 return;
             }

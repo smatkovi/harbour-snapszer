@@ -166,7 +166,8 @@ Item {
 
     // A running 3/4-player match is only replaced after confirmation.
     function startMulti(players) {
-        if (multiEngine.active && !multiEngine.matchOver)
+        // canResume without an active match means an unfinished saved one.
+        if ((multiEngine.active && !multiEngine.matchOver) || (!multiEngine.active && multiEngine.canResume))
             confirmDialog.execute(qsTranslate("harbour-snapszer", "Replacing the running 3/4-player match"),
                                   function() { multiEngine.startMatch(players) })
         else

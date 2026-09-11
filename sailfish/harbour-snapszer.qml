@@ -237,7 +237,8 @@ ApplicationWindow {
 
             // A running 3/4-player match is only replaced after a countdown.
             function startMulti(action) {
-                if (multiEngine.active && !multiEngine.matchOver)
+                // canResume without an active match means an unfinished saved one.
+                if ((multiEngine.active && !multiEngine.matchOver) || (!multiEngine.active && multiEngine.canResume))
                     newMatchRemorse.execute(qsTr("Replacing the running 3/4-player match"), function() {
                         mainPage.requestPulleyAction(action)
                     })
