@@ -28,8 +28,16 @@ rm -rf "$DIST"; mkdir -p "$DIST"
 cp "$BUILD/snapszer.js" "$BUILD/snapszer.wasm" "$BUILD/qtloader.js" "$DIST/"
 cp "$HERE/wasm/index.html" "$HERE/wasm/manifest.webmanifest" \
    "$HERE/wasm/icon-180.png" "$HERE/wasm/icon-192.png" "$HERE/wasm/icon-512.png" "$DIST/"
-# Qt for WebAssembly is used under the GPL, so the licence travels with the page.
+# Qt for WebAssembly is used under the GPL, and the game's own code under MIT,
+# so both licences travel with the page.
 cp "$HERE/wasm/LICENSE-GPL-3.0.txt" "$DIST/"
+cp "$HERE/LICENSE" "$DIST/LICENSE-MIT.txt"
+# The service worker keeps the game on the device. Its cache name is stamped
+# with the build, so a new deploy replaces the old cache instead of being
+# shadowed by it. The build machine holds no checkout, so the stamp comes from
+# the binary itself.
+STAMP=$(sha256sum "$DIST/snapszer.wasm" | cut -c1-12)
+sed "s/__CACHE_VERSION__/$STAMP/" "$HERE/wasm/sw.js" > "$DIST/sw.js"
 # Keep Qt's own loader page next to ours as the reference for the qtLoad call.
 cp "$BUILD/snapszer.html" "$DIST/qt-reference.html"
 # GitHub Pages must serve the files as they are, not run them through Jekyll.

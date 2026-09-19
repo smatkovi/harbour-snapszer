@@ -43,6 +43,14 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine qml;
     qml.rootContext()->setContextProperty(QStringLiteral("lanAvailable"), lanAvailable);
+    // The About page names a different licence and a different set of features
+    // in the browser, where Qt is used under the GPL rather than the LGPL.
+#ifdef Q_OS_WASM
+    qml.rootContext()->setContextProperty(QStringLiteral("webEdition"), true);
+#else
+    qml.rootContext()->setContextProperty(QStringLiteral("webEdition"), false);
+#endif
+    qml.rootContext()->setContextProperty(QStringLiteral("qtVersion"), QString::fromLatin1(qVersion()));
     qml.rootContext()->setContextProperty(QStringLiteral("snapszerEngine"), &engine);
     qml.rootContext()->setContextProperty(QStringLiteral("multiEngine"), &multi);
     qml.rootContext()->setContextProperty(QStringLiteral("lanBrowser"), &browser);

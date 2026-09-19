@@ -32,7 +32,9 @@ SubPage {
 
     TextBlock {
         horizontalAlignment: Text.AlignHCenter
-        text: "Android build of harbour-snapszer, the Sailfish OS game by edp17, with play over LAN against Sailfish OS and Android phones."
+        text: webEdition
+              ? "Browser build of harbour-snapszer, the Sailfish OS game by edp17. It plays against the computer and around one device; a browser cannot open the network connections the LAN game needs."
+              : "Android build of harbour-snapszer, the Sailfish OS game by edp17, with play over LAN against Sailfish OS and Android phones."
     }
 
     SectionLabel { text: qsTr("Release") }
@@ -41,7 +43,8 @@ SubPage {
         model: [
             { label: qsTr("Version"), value: "1.1.0" },
             { label: qsTr("Developer"), value: "edp17" },
-            { label: qsTr("License"), value: "MIT" }
+            { label: qsTr("License"), value: webEdition ? "GPL v3" : "MIT" },
+            { label: qsTr("Built with"), value: "Qt " + qtVersion }
         ]
         Row {
             x: Theme.horizontalPageMargin
@@ -61,9 +64,20 @@ SubPage {
         }
     }
 
+    TextBlock {
+        horizontalAlignment: Text.AlignHCenter
+        color: Theme.secondaryColor
+        font.pixelSize: Theme.fontSizeExtraSmall
+        text: webEdition
+              ? "The game's own code is offered under the MIT licence. This build links Qt for WebAssembly statically, and that is available only under the GNU General Public License version 3, so the published page as a whole is distributed under the GPL version 3. The source of both is linked below."
+              : "The game's own code is offered under the MIT licence. This build uses the Qt framework under the GNU Lesser General Public License version 3."
+    }
+
     Button {
         anchors.horizontalCenter: parent.horizontalCenter
         text: qsTr("View source on GitHub")
-        onClicked: Qt.openUrlExternally("https://github.com/edp17/harbour-snapszer")
+        // This fork carries the Android, browser and N9 editions; edp17's tree
+        // has only the Sailfish OS one.
+        onClicked: Qt.openUrlExternally("https://github.com/smatkovi/harbour-snapszer")
     }
 }

@@ -10,6 +10,15 @@ that address and use "Add to Home Screen"; the game then starts full screen with
 its own icon, and the saved match survives, which it does not reliably do in a
 plain browser tab.
 
+Add it to the home screen **before** playing. iOS gives a home-screen web app
+its own storage, separate from Safari's, so a match started in the tab stays in
+the tab. The loading screen says so too.
+
+A service worker keeps the game on the device after the first visit, so later
+starts are immediate and work with no network. Its cache name carries a stamp of
+the built binary, so a new deploy replaces the old cache rather than being
+shadowed by it.
+
 ## What it can and cannot do
 
 Everything the Android edition does except network play: the two-player game

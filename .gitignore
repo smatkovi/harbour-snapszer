@@ -4,3 +4,4 @@
 *.rpm
 *.tar.gz
 *.zip
+/wasm/dist/
