@@ -60,28 +60,28 @@ MultiEngine::MultiEngine(GameEngine* settings, QObject* parent)
     m_aiTimer.setSingleShot(true);
     m_trickPauseTimer.setSingleShot(true);
     m_watchdog.setSingleShot(true);
+    m_session = new LanSession(this);
+    // Seat names follow the player's name and the table redraws when the
+    // card style changes, hence settingsChanged -> stateChanged.
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
     connect(&m_aiTimer, &QTimer::timeout, this, &MultiEngine::runComputer);
     connect(&m_watchdog, &QTimer::timeout, this, &MultiEngine::recoverVisualTimeout);
-    connect(&m_trickPauseTimer, &QTimer::timeout, this, [this]() {
-        if (m_visualPhase != TrickPause || !m_core.trickPending())
-            return;
-        setVisualPhase(TrickFlight);
-        emit stateChanged();
-        emit trickAnimationRequested(m_core.pendingTrickWinner());
-        if (!m_settings->animationsEnabled())
-            QTimer::singleShot(0, this, &MultiEngine::completeTrickAnimation);
-        else
-            m_watchdog.start(7000);
-    });
-    // Seat names follow the player's name and the table redraws when the
-    // card style changes.
+    connect(&m_trickPauseTimer, &QTimer::timeout, this, &MultiEngine::onTrickPause);
     connect(m_settings, &GameEngine::settingsChanged, this, &MultiEngine::stateChanged);
-
-    m_session = new LanSession(this);
     connect(m_session, &LanSession::peerJoined, this, &MultiEngine::onPeerJoined);
     connect(m_session, &LanSession::peerLost, this, &MultiEngine::onPeerLost);
     connect(m_session, &LanSession::connectionFailed, this, &MultiEngine::onConnectionFailed);
     connect(m_session, &LanSession::messageReceived, this, &MultiEngine::onMessage);
+#else
+    connect(&m_aiTimer, SIGNAL(timeout()), this, SLOT(runComputer()));
+    connect(&m_watchdog, SIGNAL(timeout()), this, SLOT(recoverVisualTimeout()));
+    connect(&m_trickPauseTimer, SIGNAL(timeout()), this, SLOT(onTrickPause()));
+    connect(m_settings, SIGNAL(settingsChanged()), this, SIGNAL(stateChanged()));
+    connect(m_session, SIGNAL(peerJoined(int)), this, SLOT(onPeerJoined(int)));
+    connect(m_session, SIGNAL(peerLost(int)), this, SLOT(onPeerLost(int)));
+    connect(m_session, SIGNAL(connectionFailed(QString)), this, SLOT(onConnectionFailed(QString)));
+    connect(m_session, SIGNAL(messageReceived(int,QVariantMap)), this, SLOT(onMessage(int,QVariantMap)));
+#endif
 
     loadSettings();
 }
@@ -89,6 +89,19 @@ MultiEngine::MultiEngine(GameEngine* settings, QObject* parent)
 MultiEngine::~MultiEngine()
 {
     persist();
+}
+
+void MultiEngine::onTrickPause()
+{
+    if (m_visualPhase != TrickPause || !m_core.trickPending())
+        return;
+    setVisualPhase(TrickFlight);
+    emit stateChanged();
+    emit trickAnimationRequested(m_core.pendingTrickWinner());
+    if (!m_settings->animationsEnabled())
+        QMetaObject::invokeMethod(this, "completeTrickAnimation", Qt::QueuedConnection);
+    else
+        m_watchdog.start(7000);
 }
 
 // --- settings and persistence ------------------------------------------------------
@@ -129,11 +142,13 @@ void MultiEngine::persist()
     if (m_mode != Mode::Local || !m_active)
         return;
     QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
-    if (m_core.matchOver())
+    if (m_core.matchOver()) {
         settings.remove(QStringLiteral("multi/autosave-v1"));
-    else
+    } else {
+        const std::string saved = m_core.serializeState();
         settings.setValue(QStringLiteral("multi/autosave-v1"),
-                          QString::fromLatin1(QByteArray::fromStdString(m_core.serializeState()).toBase64()));
+                          QString::fromLatin1(QByteArray(saved.data(), static_cast<int>(saved.size())).toBase64()));
+    }
     settings.sync();
 }
 
@@ -228,7 +243,7 @@ void MultiEngine::resume()
     QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
     const QByteArray saved = QByteArray::fromBase64(settings.value(QStringLiteral("multi/autosave-v1")).toString().toLatin1());
     MultiCore core;
-    if (saved.isEmpty() || !core.restoreState(saved.toStdString()))
+    if (saved.isEmpty() || !core.restoreState(std::string(saved.constData(), static_cast<std::size_t>(saved.size()))))
         return;
     if (core.trickPending())
         core.commitTrick();
@@ -284,7 +299,7 @@ bool MultiEngine::perform(int seat, const MultiAction& action)
         emit stateChanged();
         emit cardAnimationRequested(cardId(action.value), seat);
         if (!m_settings->animationsEnabled())
-            QTimer::singleShot(0, this, &MultiEngine::completeCardAnimation);
+            QMetaObject::invokeMethod(this, "completeCardAnimation", Qt::QueuedConnection);
         else
             m_watchdog.start(5000);
     } else {

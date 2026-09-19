@@ -4,6 +4,42 @@
 <context>
     <name>AboutPage</name>
     <message>
+        <source>Classic two-player Snapszer / Snapszli / 66</source>
+        <translation>Klasszikus kétszemélyes Snapszer / Snapszli / 66</translation>
+    </message>
+    <message>
+        <source>Four computer difficulty levels</source>
+        <translation>Négy gépi nehézségi szint</translation>
+    </message>
+    <message>
+        <source>Piatnik and %1 Hungarian card designs</source>
+        <translation>Piatnik és %1 magyar kártyaképek</translation>
+    </message>
+    <message>
+        <source>20/40 declarations, trump exchange and talon closing</source>
+        <translation>20/40 bemondás, aducsere és talonzárás</translation>
+    </message>
+    <message>
+        <source>Match scoring to 7 game points</source>
+        <translation>Meccspontozás 7 játékpontig</translation>
+    </message>
+    <message>
+        <source>Animated or immediate card movement</source>
+        <translation>Animált vagy azonnali kártyamozgás</translation>
+    </message>
+    <message>
+        <source>English and Hungarian interface</source>
+        <translation>Angol és magyar felület</translation>
+    </message>
+    <message>
+        <source>Automatic recovery of an unfinished match</source>
+        <translation>A félbehagyott meccs automatikus visszaállítása</translation>
+    </message>
+    <message>
+        <source>The classic two-player Snapszer, also known as Snapszli or 66, for the Nokia N9. Same game, computer opponents and LAN play as the Sailfish OS and Android editions.</source>
+        <translation>A klasszikus kétszemélyes Snapszer, más néven Snapszli vagy 66, Nokia N9-re. Ugyanaz a játék, gépi ellenfelek és LAN-játék, mint a Sailfish OS- és Android-változatban.</translation>
+    </message>
+    <message>
         <source>About Snapszer</source>
         <translation>A Snapszerről</translation>
     </message>
@@ -261,6 +297,18 @@
 </context>
 <context>
     <name>LanPage</name>
+    <message>
+        <source>Searching</source>
+        <translation>Keresés</translation>
+    </message>
+    <message>
+        <source>%1 players, %2 free</source>
+        <translation>%1 játékos, %2 szabad</translation>
+    </message>
+    <message>
+        <source>No hosted games found yet. Start hosting on the other phone, then tap the refresh icon to search again.</source>
+        <translation>Még nem található játék. Indíts játékot a másik telefonon, majd nyomd meg a frissítés ikont a keresés megismétléséhez.</translation>
+    </message>
     <message>
         <source>Search again</source>
         <translation>Újrakeresés</translation>
@@ -631,6 +679,18 @@
 <context>
     <name>MultiPage</name>
     <message>
+        <source>Yes</source>
+        <translation>Igen</translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation>Nem</translation>
+    </message>
+    <message>
+        <source>Are you sure?</source>
+        <translation>Biztos?</translation>
+    </message>
+    <message>
         <source>Leave LAN game</source>
         <translation>Kilépés a LAN-játékból</translation>
     </message>
@@ -661,6 +721,14 @@
 </context>
 <context>
     <name>MultiRules</name>
+    <message>
+        <source>24 cards with the nines, eight cards each, no talon. The player after the dealer (%1) names trump after seeing four cards and plays alone against the other two, who count their tricks together. Before the first card he may announce a Snapszer (6 points): he must reach 66 without the others taking a trick. Otherwise the first side to reach 66 calls it: 1 point, 2 if the losers have fewer than 33, 3 if they took no trick. Defenders may double (Kontra), the %1 may redouble, and the defenders once more.</source>
+        <translation>24 lap a kilencesekkel együtt, mindenki nyolcat kap, nincs talon. Az osztó utáni játékos (%1) négy lap megnézése után adut mond, és egyedül játszik a másik kettő ellen, akik közösen számolják az ütéseiket. Az első lap kijátszása előtt Snapszert mondhat (6 pont): ekkor el kell érnie a 66-ot úgy, hogy a többiek egyetlen ütést sem visznek el. Egyébként az a fél mondja be a 66-ot, amelyik először eléri: ez 1 pontot ér, 2-t, ha a vesztesek 33-nál kevesebbet szereztek, és 3-at, ha egyetlen ütést sem vittek el. Az ellenfelek duplázhatnak (kontra), a %1 újra duplázhat, az ellenfelek pedig még egyszer.</translation>
+    </message>
+    <message>
+        <source>24 cards, six each. After three cards the %1 calls any card; its suit is trump and whoever holds it is his secret partner. Until the called card is played only the %1 may call 66, and then he wins alone. After that the two sides count together. Snapszer (6), Kontra and the scoring are as with three players; every member of the winning side scores.</source>
+        <translation>24 lap, mindenki hatot kap. Három lap megnézése után a %1 tetszőleges lapot hív; ennek színe lesz az adu, és akinél ez a lap van, az a titkos társa. Amíg a hívott lapot ki nem játsszák, csak a %1 mondhat 66-ot, és ekkor egyedül nyer. Ezután mindkét fél tagjai közösen számolnak. A Snapszer (6), a kontra és a pontozás ugyanúgy működik, mint három játékosnál; a nyertes fél minden tagja pontot kap.</translation>
+    </message>
     <message>
         <source>Three and four players</source>
         <translation>Három és négy játékos</translation>
@@ -914,6 +982,18 @@
 </context>
 <context>
     <name>harbour-snapszer</name>
+    <message>
+        <source>Yes</source>
+        <translation>Igen</translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation>Nem</translation>
+    </message>
+    <message>
+        <source>Are you sure?</source>
+        <translation>Biztos?</translation>
+    </message>
     <message>
         <source>Continue 3/4-player match</source>
         <translation>3/4 fős meccs folytatása</translation>

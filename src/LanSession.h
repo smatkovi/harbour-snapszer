@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QAbstractSocket>
 #include <QByteArray>
 #include <QList>
 #include <QObject>
@@ -59,6 +60,18 @@ signals:
     void messageReceived(int peer, const QVariantMap& message);
     void connectionFailed(const QString& reason);
 
+private slots:
+    // Named slots rather than lambdas: the MeeGo build (Qt 4.7) connects by
+    // signature and cannot connect to lambdas.
+    void acceptConnections();
+    void answerDiscovery();
+    void onPingTimeout();
+    void onConnectTimeout();
+    void onSocketConnected();
+    void onSocketError(QAbstractSocket::SocketError error);
+    void onPeerReadyRead();
+    void onPeerDisconnected();
+
 private:
     struct Peer {
         int id = -1;
@@ -67,14 +80,14 @@ private:
         qint64 lastSeen = 0;
     };
 
-    void acceptConnections();
     Peer* addPeer(QTcpSocket* socket);
     Peer* findPeer(int id);
+    int peerIdFor(const QObject* socket) const;
     void removePeer(int id, bool notify);
     void readPeer(int id);
     void checkIdlePeers();
-    void answerDiscovery();
     static void writeLine(QTcpSocket* socket, const QVariantMap& message);
+    static void deleteWhenDisconnected(QTcpSocket* socket);
 
     Role m_role = None;
     QString m_hostName;
@@ -116,11 +129,13 @@ signals:
     void hostsChanged();
     void searchingChanged();
 
-private:
-    bool ensureSocket();
+private slots:
     void sendProbes();
     void readReplies();
     void finish();
+
+private:
+    bool ensureSocket();
 
     QUdpSocket* m_socket = nullptr;
     QTimer m_timer;

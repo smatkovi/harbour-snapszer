@@ -66,7 +66,11 @@ public:
     ~GameEngine() override;
 
     enum VisualPhase { Idle = 0, CardFlight = 1, TrickPause = 2, TrickFlight = 3, Deal = 4 };
+    // Qt 5 only: moc 4.7 (MeeGo build) swallows the declaration that follows
+    // a Q_ENUMS(), and QML never needs the enum by name.
+#if QT_VERSION >= 0x050500
     Q_ENUM(VisualPhase)
+#endif
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void newMatch();
@@ -157,6 +161,17 @@ signals:
     void trickAnimationRequested(int winnerPlayer);
     void dealAnimationRequested(const QVariantList& cards, int firstPlayer);
 
+private slots:
+    // Named slots rather than lambdas: the MeeGo build (Qt 4.7) connects by
+    // signature and cannot connect to lambdas.
+    void performAiMove();
+    void onTrickPause();
+    void recoverVisualTimeout();
+    void onPeerConnectedChanged();
+    void onPeerLost();
+    void onConnectionFailed(const QString& reason);
+    void onNetworkMessage(int peer, const QVariantMap& message);
+
 private:
     // Ai: local match against the computer. LanHost: this device owns the
     // authoritative GameCore and the remote guest is player 1. LanGuest: the
@@ -175,11 +190,9 @@ private:
     bool startPlay(int player, int handIndex, bool declareMarriage);
     bool applyAction(int player, const QString& op);
     void scheduleAiMove();
-    void performAiMove();
     void beginTrickResolution();
     void finishIdle();
     void startDealAnimation(const QVariantList& cards, int firstPlayer);
-    void recoverVisualTimeout();
     void loadSettings();
     void saveSettings();
     void persistGame();
@@ -188,10 +201,6 @@ private:
     void normalizeRestoredState();
     std::uint32_t freshSeed() const;
 
-    void onPeerConnectedChanged();
-    void onPeerLost();
-    void onConnectionFailed(const QString& reason);
-    void onNetworkMessage(int peer, const QVariantMap& message);
     void processRemoteQueue();
     void hostHandleRequest(const QVariantMap& message);
     void guestHandleMessage(const QVariantMap& message);

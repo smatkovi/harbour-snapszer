@@ -1,0 +1,7 @@
+harbour-snapszer (1.1.0) unstable; urgency=low
+
+  * MeeGo Harmattan edition of Snapszer 1.1.0: two-player Snapszer against
+    the computer, three- and four-player tables, LAN play with the
+    Sailfish OS and Android editions, English and Hungarian.
+
+ -- Sebastian Matkovich <sebastian.matkovich@gmail.com>  Sat, 19 Sep 2026 12:00:00 +0200

@@ -71,3 +71,10 @@ in the same Wi-Fi network (a hotspot opened by one of the phones works too).
   permission for this.
 - Both phones receive the full game state, so the mode is meant for friendly
   games, not for playing against strangers.
+
+## MeeGo Harmattan (Nokia N9)
+
+The same game also builds for the Nokia N9 (Qt 4.7, QtQuick 1.1, the
+`com.nokia.meego` components): see `meego/README.md`. The package is
+`harbour-snapszer_<version>_armel.deb`, attached to the `meego-<version>`
+releases on GitHub.

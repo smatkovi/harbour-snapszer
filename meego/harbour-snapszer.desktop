@@ -1,0 +1,10 @@
+[Desktop Entry]
+Encoding=UTF-8
+Version=1.0
+Type=Application
+Name=Snapszer
+Comment=Classic Hungarian Snapszer card game
+Icon=/usr/share/themes/base/meegotouch/icons/harbour-snapszer-80.png
+Exec=/opt/harbour-snapszer/bin/harbour-snapszer
+Categories=Game;
+X-Osso-Type=application/x-executable

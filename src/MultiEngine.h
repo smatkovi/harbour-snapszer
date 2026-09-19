@@ -5,6 +5,7 @@
 #include <QList>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -56,7 +57,11 @@ class MultiEngine : public QObject
 
 public:
     enum VisualPhase { Idle = 0, CardFlight = 1, TrickPause = 2, TrickFlight = 3 };
+    // Qt 5 only: moc 4.7 (MeeGo build) swallows the declaration that follows
+    // a Q_ENUMS(), and QML never needs the enum by name.
+#if QT_VERSION >= 0x050500
     Q_ENUM(VisualPhase)
+#endif
 
     explicit MultiEngine(GameEngine* settings, QObject* parent = nullptr);
     ~MultiEngine() override;
@@ -132,6 +137,17 @@ signals:
     void cardAnimationRequested(const QString& cardId, int seat);
     void trickAnimationRequested(int winnerSeat);
 
+private slots:
+    // Named slots rather than lambdas: the MeeGo build (Qt 4.7) connects by
+    // signature and cannot connect to lambdas.
+    void runComputer();
+    void onTrickPause();
+    void recoverVisualTimeout();
+    void onPeerJoined(int peer);
+    void onPeerLost(int peer);
+    void onConnectionFailed(const QString& reason);
+    void onMessage(int peer, const QVariantMap& message);
+
 private:
     enum class Mode { Local, Host, Guest };
 
@@ -146,18 +162,12 @@ private:
     void setVisualPhase(VisualPhase phase);
     void finishIdle();
     void scheduleComputer();
-    void runComputer();
-    void recoverVisualTimeout();
 
     void loadSettings();
     void saveSettings();
     void persist();
 
     // LAN
-    void onPeerJoined(int peer);
-    void onPeerLost(int peer);
-    void onConnectionFailed(const QString& reason);
-    void onMessage(int peer, const QVariantMap& message);
     void processRemoteQueue();
     void hostHandle(int peer, const QVariantMap& message);
     void guestHandle(const QVariantMap& message);

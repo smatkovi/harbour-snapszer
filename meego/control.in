@@ -1,0 +1,15 @@
+Package: harbour-snapszer
+Version: @VERSION@
+Section: user/games
+Priority: optional
+Architecture: armel
+Depends: libqt4-declarative (>= 4.7.4), libqt4-network (>= 4.7.4), libqt4-script (>= 4.7.4), libqt4-gui (>= 4.7.4), qt-components
+Maintainer: Sebastian Matkovich <sebastian.matkovich@gmail.com>
+Homepage: https://github.com/smatkovi/harbour-snapszer
+Description: Classic Hungarian Snapszer card game
+ Snapszer (Snapszli, 66) against the computer or against other phones in
+ the same Wi-Fi network, with three- and four-player Schnapsen variants.
+ MeeGo Harmattan edition of the Sailfish OS and Android app.
+Maemo-Display-Name: Snapszer
+XB-Maemo-Icon-26:
+@ICON@

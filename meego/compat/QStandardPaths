@@ -1,0 +1,11 @@
+// Qt 4 shim. writableLocation() answers with an empty string, so
+// GameEngine::settingsFilePath() takes its documented fallback
+// ($HOME/.config/org.edp17/harbour-snapszer).
+#pragma once
+#include <QString>
+class QStandardPaths
+{
+public:
+    enum StandardLocation { AppConfigLocation, ConfigLocation, AppDataLocation };
+    static QString writableLocation(StandardLocation) { return QString(); }
+};

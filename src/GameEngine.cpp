@@ -26,25 +26,24 @@ GameEngine::GameEngine(QObject* parent)
     m_aiTimer.setSingleShot(true);
     m_trickPauseTimer.setSingleShot(true);
     m_visualWatchdog.setSingleShot(true);
-    connect(&m_aiTimer, &QTimer::timeout, this, &GameEngine::performAiMove);
-    connect(&m_trickPauseTimer, &QTimer::timeout, this, [this]() {
-        if (m_visualPhase != TrickPause || !m_core.trickPending())
-            return;
-        setVisualPhase(TrickFlight);
-        emit stateChanged();
-        emit trickAnimationRequested(m_core.pendingTrickWinner());
-        if (!m_animationsEnabled)
-            QTimer::singleShot(0, this, &GameEngine::completeTrickAnimation);
-        else
-            m_visualWatchdog.start(7000);
-    });
-    connect(&m_visualWatchdog, &QTimer::timeout, this, &GameEngine::recoverVisualTimeout);
-
     m_session = new LanSession(this);
+#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
+    connect(&m_aiTimer, &QTimer::timeout, this, &GameEngine::performAiMove);
+    connect(&m_trickPauseTimer, &QTimer::timeout, this, &GameEngine::onTrickPause);
+    connect(&m_visualWatchdog, &QTimer::timeout, this, &GameEngine::recoverVisualTimeout);
     connect(m_session, &LanSession::peerJoined, this, &GameEngine::onPeerConnectedChanged);
     connect(m_session, &LanSession::peerLost, this, &GameEngine::onPeerLost);
     connect(m_session, &LanSession::connectionFailed, this, &GameEngine::onConnectionFailed);
     connect(m_session, &LanSession::messageReceived, this, &GameEngine::onNetworkMessage);
+#else
+    connect(&m_aiTimer, SIGNAL(timeout()), this, SLOT(performAiMove()));
+    connect(&m_trickPauseTimer, SIGNAL(timeout()), this, SLOT(onTrickPause()));
+    connect(&m_visualWatchdog, SIGNAL(timeout()), this, SLOT(recoverVisualTimeout()));
+    connect(m_session, SIGNAL(peerJoined(int)), this, SLOT(onPeerConnectedChanged()));
+    connect(m_session, SIGNAL(peerLost(int)), this, SLOT(onPeerLost()));
+    connect(m_session, SIGNAL(connectionFailed(QString)), this, SLOT(onConnectionFailed(QString)));
+    connect(m_session, SIGNAL(messageReceived(int,QVariantMap)), this, SLOT(onNetworkMessage(int,QVariantMap)));
+#endif
 
     loadSettings();
     m_freshGame = !restoreGame();
@@ -57,6 +56,19 @@ GameEngine::GameEngine(QObject* parent)
 GameEngine::~GameEngine()
 {
     persistGame();
+}
+
+void GameEngine::onTrickPause()
+{
+    if (m_visualPhase != TrickPause || !m_core.trickPending())
+        return;
+    setVisualPhase(TrickFlight);
+    emit stateChanged();
+    emit trickAnimationRequested(m_core.pendingTrickWinner());
+    if (!m_animationsEnabled)
+        QMetaObject::invokeMethod(this, "completeTrickAnimation", Qt::QueuedConnection);
+    else
+        m_visualWatchdog.start(7000);
 }
 
 std::uint32_t GameEngine::freshSeed() const
@@ -388,7 +400,7 @@ bool GameEngine::startPlay(int player, int handIndex, bool declareMarriage)
     emit stateChanged();
     emit cardAnimationRequested(cardId(card), player, handIndex);
     if (!m_animationsEnabled)
-        QTimer::singleShot(0, this, &GameEngine::completeCardAnimation);
+        QMetaObject::invokeMethod(this, "completeCardAnimation", Qt::QueuedConnection);
     else
         m_visualWatchdog.start(5000);
     return true;
@@ -512,7 +524,7 @@ void GameEngine::startDealAnimation(const QVariantList& cards, int firstPlayer)
     emit stateChanged();
     emit dealAnimationRequested(cards, firstPlayer);
     if (!m_animationsEnabled)
-        QTimer::singleShot(0, this, &GameEngine::completeDealAnimation);
+        QMetaObject::invokeMethod(this, "completeDealAnimation", Qt::QueuedConnection);
     else
         m_visualWatchdog.start(9000);
 }
