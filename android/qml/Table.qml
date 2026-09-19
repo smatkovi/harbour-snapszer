@@ -241,7 +241,7 @@ Item {
 
             MenuItem {
                 text: qsTranslate("harbour-snapszer", "Leave LAN game")
-                visible: engine.networkGame
+                visible: lanAvailable && engine.networkGame
                 height: visible ? implicitHeight : 0
                 onTriggered: confirmDialog.execute(qsTranslate("harbour-snapszer", "Leaving the LAN game"), function() {
                     mainPage.runAction("leaveLan")
@@ -249,7 +249,7 @@ Item {
             }
             MenuItem {
                 text: qsTranslate("harbour-snapszer", "Play over LAN")
-                visible: !engine.networkGame && !multiEngine.networkGame
+                visible: lanAvailable && !engine.networkGame && !multiEngine.networkGame
                 height: visible ? implicitHeight : 0
                 onTriggered: mainPage.StackView.view.push(Qt.resolvedUrl("LanPage.qml"))
             }

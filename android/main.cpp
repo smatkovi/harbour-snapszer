@@ -34,7 +34,15 @@ int main(int argc, char *argv[])
     QObject::connect(&engine, &GameEngine::networkChanged, &screen, updateScreen);
     QObject::connect(&multi, &MultiEngine::networkChanged, &screen, updateScreen);
 
+    // A browser has no raw sockets, so the LAN pages stay out of reach there.
+#ifdef Q_OS_WASM
+    const bool lanAvailable = false;
+#else
+    const bool lanAvailable = true;
+#endif
+
     QQmlApplicationEngine qml;
+    qml.rootContext()->setContextProperty(QStringLiteral("lanAvailable"), lanAvailable);
     qml.rootContext()->setContextProperty(QStringLiteral("snapszerEngine"), &engine);
     qml.rootContext()->setContextProperty(QStringLiteral("multiEngine"), &multi);
     qml.rootContext()->setContextProperty(QStringLiteral("lanBrowser"), &browser);

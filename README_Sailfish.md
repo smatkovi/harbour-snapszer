@@ -78,3 +78,14 @@ The same game also builds for the Nokia N9 (Qt 4.7, QtQuick 1.1, the
 `com.nokia.meego` components): see `meego/README.md`. The package is
 `harbour-snapszer_<version>_armel.deb`, attached to the `meego-<version>`
 releases on GitHub.
+
+## Browser edition (WebAssembly)
+
+`wasm/` builds the Android edition with Qt for WebAssembly and publishes it at
+<https://smatkovi.github.io/harbour-snapszer/>, so the game can be played on
+devices that have no package of their own, the iPhone above all. On a phone,
+open the address and use "Add to Home Screen".
+
+Everything works except network play: browsers have no raw sockets, so the LAN
+entry is hidden there. The page is distributed under the GPL version 3, because
+Qt for WebAssembly is offered only under that licence. See `wasm/README.md`.

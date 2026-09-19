@@ -4,7 +4,7 @@
 #include "LanSession.h"
 
 #include <QDateTime>
-#include <QSettings>
+#include "AppSettings.h"
 
 #include <algorithm>
 
@@ -108,14 +108,14 @@ void MultiEngine::onTrickPause()
 
 void MultiEngine::loadSettings()
 {
-    QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     m_rules3 = qBound(0, settings.value(QStringLiteral("multi/rules3"), 1).toInt(), 1);
     m_rules4 = qBound(0, settings.value(QStringLiteral("multi/rules4"), 1).toInt(), 1);
 }
 
 void MultiEngine::saveSettings()
 {
-    QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     settings.setValue(QStringLiteral("multi/rules3"), m_rules3);
     settings.setValue(QStringLiteral("multi/rules4"), m_rules4);
     settings.sync();
@@ -141,7 +141,7 @@ void MultiEngine::persist()
     // continued without the other devices.
     if (m_mode != Mode::Local || !m_active)
         return;
-    QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     if (m_core.matchOver()) {
         settings.remove(QStringLiteral("multi/autosave-v1"));
     } else {
@@ -158,7 +158,7 @@ bool MultiEngine::canResume() const
         return true;
     if (networkGame())
         return false;
-    QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     return settings.contains(QStringLiteral("multi/autosave-v1"));
 }
 
@@ -240,7 +240,7 @@ void MultiEngine::resume()
     }
     if (networkGame())
         return;
-    QSettings settings(GameEngine::settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     const QByteArray saved = QByteArray::fromBase64(settings.value(QStringLiteral("multi/autosave-v1")).toString().toLatin1());
     MultiCore core;
     if (saved.isEmpty() || !core.restoreState(std::string(saved.constData(), static_cast<std::size_t>(saved.size()))))

@@ -5,7 +5,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
-#include <QSettings>
+#include "AppSettings.h"
 #include <QStandardPaths>
 #include <QtGlobal>
 
@@ -87,7 +87,7 @@ QString GameEngine::settingsFilePath()
 
 void GameEngine::loadSettings()
 {
-    QSettings settings(settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     m_playerName = settings.value(QStringLiteral("ui/playerName"), QStringLiteral("Player")).toString();
     m_opponentName = settings.value(QStringLiteral("ui/opponentName"), QStringLiteral("AI")).toString();
     m_cardStyle = settings.value(QStringLiteral("ui/cardStyle"), QStringLiteral("Piatnik")).toString();
@@ -102,7 +102,7 @@ void GameEngine::loadSettings()
 
 void GameEngine::saveSettings()
 {
-    QSettings settings(settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     settings.setValue(QStringLiteral("ui/playerName"), m_playerName);
     settings.setValue(QStringLiteral("ui/opponentName"), m_opponentName);
     settings.setValue(QStringLiteral("ui/cardStyle"), m_cardStyle);
@@ -595,7 +595,7 @@ void GameEngine::persistGame()
     // when a LAN game ends.
     if (m_mode != Mode::Ai)
         return;
-    QSettings settings(settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     const std::string saved = m_core.serializeState();
     const QByteArray bytes(saved.data(), static_cast<int>(saved.size()));
     settings.setValue(QStringLiteral("game/autosave-v1"), QString::fromLatin1(bytes.toBase64()));
@@ -604,7 +604,7 @@ void GameEngine::persistGame()
 
 bool GameEngine::restoreGame()
 {
-    QSettings settings(settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     const QString encoded = settings.value(QStringLiteral("game/autosave-v1")).toString();
     if (encoded.isEmpty())
         return false;
@@ -616,7 +616,7 @@ bool GameEngine::restoreGame()
 
 void GameEngine::clearSavedGame()
 {
-    QSettings settings(settingsFilePath(), QSettings::NativeFormat);
+    AppSettings settings;
     settings.remove(QStringLiteral("game/autosave-v1"));
     settings.sync();
 }

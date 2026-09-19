@@ -13,6 +13,7 @@ set(SNAPSZER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 qt_add_executable(snapszer
     main.cpp
     ScreenHelper.h
+    ${SNAPSZER_ROOT}/src/AppSettings.h
     ${SNAPSZER_ROOT}/src/GameCore.cpp
     ${SNAPSZER_ROOT}/src/GameCore.h
     ${SNAPSZER_ROOT}/src/GameEngine.cpp
@@ -83,17 +84,17 @@ qt_add_resources(snapszer snapszer_translations
     FILES "${SNAPSZER_QM}"
 )
 
-set_target_properties(snapszer PROPERTIES
-    QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/package"
-    QT_ANDROID_PACKAGE_NAME "org.edp17.snapszer"
-    QT_ANDROID_APP_NAME "Snapszer"
-    QT_ANDROID_APP_ICON "@drawable/icon"
-    QT_ANDROID_MIN_SDK_VERSION 28
-    QT_ANDROID_TARGET_SDK_VERSION 36
-    QT_ANDROID_VERSION_CODE 4
-    QT_ANDROID_VERSION_NAME "1.1.0"
-)
 if(ANDROID)
+    set_target_properties(snapszer PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/package"
+        QT_ANDROID_PACKAGE_NAME "org.edp17.snapszer"
+        QT_ANDROID_APP_NAME "Snapszer"
+        QT_ANDROID_APP_ICON "@drawable/icon"
+        QT_ANDROID_MIN_SDK_VERSION 28
+        QT_ANDROID_TARGET_SDK_VERSION 36
+        QT_ANDROID_VERSION_CODE 4
+        QT_ANDROID_VERSION_NAME "1.1.0"
+    )
     # Broadcast discovery needs a Wi-Fi multicast lock on many devices.
     qt_add_android_permission(snapszer NAME android.permission.ACCESS_WIFI_STATE)
     qt_add_android_permission(snapszer NAME android.permission.CHANGE_WIFI_MULTICAST_STATE)
@@ -102,4 +103,13 @@ if(ANDROID)
     qt_add_android_permission(snapszer NAME android.permission.FOREGROUND_SERVICE_SPECIAL_USE)
     qt_add_android_permission(snapszer NAME android.permission.POST_NOTIFICATIONS)
     qt_add_android_permission(snapszer NAME android.permission.WAKE_LOCK)
+endif()
+
+if(EMSCRIPTEN)
+    # The browser edition. Qt for WebAssembly gives the page no raw sockets, so
+    # the LAN pages are hidden at run time (see main.cpp); the code still
+    # compiles. 64 MB up front spares the card images a heap growth during the
+    # first deal. The deployed page is wasm/index.html, not the generated
+    # snapszer.html, which is kept as the reference loader.
+    set_target_properties(snapszer PROPERTIES QT_WASM_INITIAL_MEMORY "67108864")
 endif()

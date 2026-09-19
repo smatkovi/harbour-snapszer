@@ -6,9 +6,17 @@
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QNetworkInterface>
 #include <QTcpSocket>
 #include <QUdpSocket>
+
+// Qt for WebAssembly builds QtNetwork without QNetworkInterface, because a
+// browser cannot enumerate the machine's interfaces. Every use of the class
+// below already has a fallback, so there it is simply left out. QHostAddress
+// above has pulled in the feature flags; Qt 4 defines none of them.
+#if !defined(QT_FEATURE_networkinterface) || QT_FEATURE_networkinterface == 1
+#  define SNAPSZER_HAVE_NETWORKINTERFACE 1
+#  include <QNetworkInterface>
+#endif
 
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
@@ -318,6 +326,7 @@ void LanSession::dropPeer(int peer)
 QStringList LanSession::localAddresses()
 {
     QStringList result;
+#ifdef SNAPSZER_HAVE_NETWORKINTERFACE
     const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
     for (const QNetworkInterface& iface : interfaces) {
         const QNetworkInterface::InterfaceFlags flags = iface.flags();
@@ -330,6 +339,7 @@ QStringList LanSession::localAddresses()
                 result.append(entry.ip().toString());
         }
     }
+#endif
     if (result.isEmpty()) {
         const QHostAddress routed = routedLocalAddress();
         if (!routed.isNull())
@@ -341,6 +351,7 @@ QStringList LanSession::localAddresses()
 QStringList LanSession::internetAddresses()
 {
     QStringList result;
+#ifdef SNAPSZER_HAVE_NETWORKINTERFACE
     const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
     for (const QNetworkInterface& iface : interfaces) {
         const QNetworkInterface::InterfaceFlags flags = iface.flags();
@@ -353,6 +364,7 @@ QStringList LanSession::internetAddresses()
                 result.append(entry.ip().toString());
         }
     }
+#endif
     const QHostAddress routed = routedAddress(QStringLiteral("2001:4860:4860::8888"));
     if (isGlobalIPv6(routed) && !result.contains(routed.toString()))
         result.prepend(routed.toString()); // the address actually used for outgoing traffic
@@ -610,6 +622,7 @@ void LanBrowser::sendProbes()
     {
         sendTo(QHostAddress(QHostAddress::Broadcast));
         bool directed = false;
+#ifdef SNAPSZER_HAVE_NETWORKINTERFACE
         const QList<QNetworkInterface> interfaces = QNetworkInterface::allInterfaces();
         for (const QNetworkInterface& iface : interfaces) {
             const QNetworkInterface::InterfaceFlags flags = iface.flags();
@@ -624,6 +637,7 @@ void LanBrowser::sendProbes()
                 }
             }
         }
+#endif
         if (!directed) {
             // No interface details available: assume the usual /24 home network.
             const QHostAddress routed = routedLocalAddress();
