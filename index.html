@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <!-- viewport-fit=cover lets the page reach under the notch; the safe area
+         is given back to the canvas in CSS below, because Qt's SafeArea
+         attached property reports zero in a browser. -->
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#084a2b">
+    <!-- "Add to Home Screen" on iOS: full screen, no Safari chrome. The Apple
+         prefix is still the only one iOS honours; the unprefixed one is for
+         everyone else. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Snapszer">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+
+    <title>Snapszer</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0b5d36;
+        color: #ffffff;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        /* No pull-to-refresh, no double-tap zoom, no long-press callout while
+           playing cards. */
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #screen {
+        position: absolute;
+        top: env(safe-area-inset-top, 0px);
+        bottom: env(safe-area-inset-bottom, 0px);
+        left: env(safe-area-inset-left, 0px);
+        right: env(safe-area-inset-right, 0px);
+        display: none;
+      }
+      #loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: max(16px, env(safe-area-inset-left, 0px)) 16px;
+        box-sizing: border-box;
+        text-align: center;
+        overflow-y: auto;
+      }
+      #loading img { width: 96px; height: 96px; border-radius: 18px; }
+      h1 { font-size: 1.4rem; font-weight: 600; margin: 0.8em 0 0.2em; }
+      #status { color: #ffd27a; min-height: 1.4em; }
+      #hint { font-size: 0.8rem; color: #b3ffffff; margin-top: 0.6em; max-width: 30em; }
+      #warning { font-size: 0.8rem; color: #ff9a76; margin-top: 0.8em; max-width: 30em; }
+      #restart {
+        margin-top: 1em;
+        padding: 0.6em 1.4em;
+        font: inherit;
+        color: #0b5d36;
+        background: #ffd27a;
+        border: 0;
+        border-radius: 999px;
+      }
+      #legal { font-size: 0.72rem; line-height: 1.5; color: #b3ffffff; max-width: 34em; margin-top: 1.6em; }
+      #legal a { color: #ffd27a; }
+      /* The spinner sits above the canvas until Qt has painted once. */
+      .hidden { display: none !important; }
+
+      /* The table is laid out for an upright phone, the same way the Android
+         edition locks itself to portrait. A browser cannot be locked, so a
+         touch device held sideways gets asked to turn back. The canvas keeps
+         running underneath, so nothing is lost. A mouse-driven window is left
+         alone, however short it is. */
+      #rotate { display: none; }
+      @media (orientation: landscape) and (pointer: coarse) {
+        #rotate {
+          position: fixed;
+          inset: 0;
+          z-index: 10;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 0.4em;
+          background: #0b5d36;
+          font-size: 1.1rem;
+        }
+        #rotate .hu { color: #ffd27a; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="screen"></div>
+
+    <div id="rotate">
+      <div>Please turn the phone upright.</div>
+      <div class="hu">Fordítsd a telefont álló helyzetbe.</div>
+    </div>
+
+    <div id="loading">
+      <img src="icon-192.png" alt="">
+      <h1>Snapszer</h1>
+      <div id="status">Loading, this takes a moment on the first visit…</div>
+      <div id="hint">
+        On a phone, add this page to the home screen before you start playing.
+        A match started in the browser tab stays in the browser tab, because iOS
+        gives a home-screen app its own storage.
+      </div>
+      <div id="warning" class="hidden"></div>
+      <button id="restart" type="button" class="hidden">Try again</button>
+      <noscript>This game needs JavaScript. Please enable it.</noscript>
+
+      <div id="legal">
+        Snapszer is free software. The game's own code is offered under the
+        <a href="LICENSE-MIT.txt" target="_blank" rel="noopener">MIT licence</a>;
+        some files also carry a GNU GPL v3-or-later header from the original
+        author. This edition statically links Qt for WebAssembly, which The Qt
+        Company offers only under the GNU General Public License version 3, so
+        this page as a whole is distributed under the
+        <a href="LICENSE-GPL-3.0.txt" target="_blank" rel="noopener">GPL version 3</a>.
+        <br>
+        Corresponding source: this game and the scripts that build it at
+        <a href="https://github.com/smatkovi/harbour-snapszer/tree/57173704b5c9129a2aedb35067f045bcef1cf3e0" target="_blank" rel="noopener">github.com/smatkovi/harbour-snapszer</a>,
+        revision <code>5717370</code>, directory <code>wasm/</code>;
+        Qt 6.11.1 at
+        <a href="https://download.qt.io/archive/qt/6.11/6.11.1/single/qt-everywhere-src-6.11.1.tar.xz" target="_blank" rel="noopener">qt-everywhere-src-6.11.1.tar.xz</a>,
+        used as The Qt Company's prebuilt single-threaded WebAssembly kit and
+        linked with
+        <a href="https://github.com/emscripten-core/emscripten/tree/4.0.7" target="_blank" rel="noopener">Emscripten 4.0.7</a>.
+        Qt bundles third-party code under its own licences, listed under
+        <a href="https://doc.qt.io/qt-6/licenses-used-in-qt.html" target="_blank" rel="noopener">Licenses Used in Qt</a>.
+        Qt is a trademark of The Qt Company Ltd.
+      </div>
+    </div>
+
+    <script type="text/javascript">
+      const loading = document.querySelector('#loading');
+      const screenEl = document.querySelector('#screen');
+      const status = document.querySelector('#status');
+      const hint = document.querySelector('#hint');
+      const warning = document.querySelector('#warning');
+      const restart = document.querySelector('#restart');
+
+      restart.addEventListener('click', () => location.reload());
+
+      function fail(message) {
+          screenEl.style.display = 'none';
+          loading.classList.remove('hidden');
+          status.textContent = message;
+          restart.classList.remove('hidden');
+      }
+
+      // Qt keeps settings and the saved match in local storage. A browser that
+      // refuses it does not report an error, the match simply never comes
+      // back, so say so up front instead.
+      function checkStorage() {
+          try {
+              localStorage.setItem('snapszer-probe', '1');
+              localStorage.removeItem('snapszer-probe');
+          } catch (e) {
+              warning.textContent = 'This browser is not storing data for this page, '
+                  + 'so an interrupted match will not be kept. Allowing cookies and '
+                  + 'site data for this address fixes it. '
+                  + 'Ez a böngésző nem tárol adatot ehhez az oldalhoz, '
+                  + 'ezért a félbehagyott meccs nem marad meg.';
+              warning.classList.remove('hidden');
+          }
+      }
+
+      async function init() {
+          checkStorage();
+          try {
+              await qtLoad({
+                  qt: {
+                      onLoaded: () => {
+                          loading.classList.add('hidden');
+                          screenEl.style.display = 'block';
+                          // Registered only now, so the files it caches come
+                          // from the browser's own cache rather than a second
+                          // download of the whole game.
+                          if ('serviceWorker' in navigator) {
+                              navigator.serviceWorker.register('sw.js').catch(e => console.warn(e));
+                          }
+                      },
+                      onExit: exitData => {
+                          fail('The game stopped'
+                              + (exitData.code !== undefined ? `, code ${exitData.code}` : '')
+                              + (exitData.text !== undefined ? `: ${exitData.text}` : '')
+                              + '.');
+                      },
+                      entryFunction: window.snapszer_entry,
+                      containerElements: [screenEl],
+                  }
+              });
+          } catch (e) {
+              console.error(e);
+              hint.classList.add('hidden');
+              fail('This browser could not start the game. It needs WebAssembly and WebGL.');
+          }
+      }
+      window.addEventListener('load', init);
+    </script>
+    <script type="text/javascript" src="snapszer.js"></script>
+    <script type="text/javascript" src="qtloader.js"></script>
+  </body>
+</html>
