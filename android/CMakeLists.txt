@@ -10,9 +10,16 @@ qt_standard_project_setup(REQUIRES 6.9)
 # The game logic, AI and LAN code are shared with the Sailfish OS build.
 set(SNAPSZER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 
+# iOS needs one Objective-C++ file for the single UIKit call in ScreenHelper.
+set(SNAPSZER_PLATFORM_SOURCES)
+if(IOS)
+    list(APPEND SNAPSZER_PLATFORM_SOURCES "${SNAPSZER_ROOT}/ios/ScreenHelperIos.mm")
+endif()
+
 qt_add_executable(snapszer
     main.cpp
     ScreenHelper.h
+    ${SNAPSZER_PLATFORM_SOURCES}
     ${SNAPSZER_ROOT}/src/AppSettings.h
     ${SNAPSZER_ROOT}/src/BtLink.cpp
     ${SNAPSZER_ROOT}/src/BtLink.h
@@ -105,6 +112,26 @@ if(ANDROID)
     qt_add_android_permission(snapszer NAME android.permission.FOREGROUND_SERVICE_SPECIAL_USE)
     qt_add_android_permission(snapszer NAME android.permission.POST_NOTIFICATIONS)
     qt_add_android_permission(snapszer NAME android.permission.WAKE_LOCK)
+endif()
+
+if(IOS)
+    # A .app bundle, built from the very same sources and QML as the Android and
+    # browser editions -- iOS is just the third shell around them.
+    #
+    # Two things do not come along: classic Bluetooth, which iOS gives no
+    # third-party app (src/BtLink.cpp compiles to its stub), and automatic LAN
+    # discovery, which broadcasts UDP and would need Apple's multicast
+    # entitlement. A host joined by typed address works, and that is what the
+    # local-network prompt in Info.plist is for.
+    set_target_properties(snapszer PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${SNAPSZER_ROOT}/ios/Info.plist.in"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "org.edp17.snapszer"
+        MACOSX_BUNDLE_BUNDLE_NAME "Snapszer"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1"
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+    )
 endif()
 
 if(EMSCRIPTEN)

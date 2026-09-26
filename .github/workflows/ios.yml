@@ -1,0 +1,157 @@
+name: iOS
+
+# This repository is public, so GitHub-hosted runners are free here and a push
+# may spend them. (In a private one macOS bills at ten times the rate -- that is
+# why the NSR Reader port, which this borrows its Qt build from, is manual only.)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'src/**'
+      - 'android/**'
+      - 'qml-common/**'
+      - 'ios/**'
+      - 'images/**'
+      - 'tools/build-qt-ios-sim.sh'
+      - '.github/workflows/ios.yml'
+
+jobs:
+  device:
+    name: Unsigned app for a device
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host Qt (the tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.1'
+          host: mac
+          target: desktop
+          arch: clang_64
+          dir: ${{ runner.temp }}/qt-host
+          set-env: false
+
+      - name: Qt for iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.1'
+          host: mac
+          target: ios
+          dir: ${{ runner.temp }}/qt-ios
+          set-env: false
+
+      - run: brew install ninja
+
+      - name: Build
+        run: |
+          export QT_HOST_PATH="${{ runner.temp }}/qt-host/Qt/6.9.1/macos"
+          export QT_IOS="${{ runner.temp }}/qt-ios/Qt/6.9.1/ios"
+          sh ios/build.sh iphoneos
+
+      - name: Package the ipa
+        run: |
+          APP=$(find build-ios-iphoneos -name "snapszer.app" -maxdepth 4 | head -1)
+          test -n "$APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry snapszer-unsigned.ipa Payload
+          ls -la snapszer-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snapszer-ios
+          path: snapszer-unsigned.ipa
+
+  simulator:
+    name: In the simulator
+    runs-on: macos-14
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host Qt (the tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.1'
+          host: mac
+          target: desktop
+          arch: clang_64
+          dir: ${{ runner.temp }}/qt-host
+          set-env: false
+
+      - run: brew install ninja
+
+      - name: Export paths
+        run: |
+          echo "QT_HOST_PATH=${{ runner.temp }}/qt-host/Qt/6.9.1/macos" >> $GITHUB_ENV
+          echo "QT_IOS=$PWD/ext/qt-sim" >> $GITHUB_ENV
+
+      # Restored and saved separately, so a failed attempt keeps its progress:
+      # the first run builds Qt from source and takes well over an hour.
+      - name: Restore Qt for the simulator
+        id: cache-qt
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ext/qt-sim
+            ext/qtsrc
+            ext/qtbuild
+          key: qt-6.9.1-iphonesimulator-arm64-v1
+          restore-keys: qt-6.9.1-iphonesimulator-arm64-
+
+      - name: Build Qt for the simulator
+        if: steps.cache-qt.outputs.cache-hit != 'true'
+        run: tools/build-qt-ios-sim.sh "$PWD/ext/qt-sim" "$QT_HOST_PATH"
+
+      - name: Save Qt for the simulator
+        if: always() && steps.cache-qt.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ext/qt-sim
+            ext/qtsrc
+            ext/qtbuild
+          key: qt-6.9.1-iphonesimulator-arm64-v1-${{ github.run_id }}
+
+      - name: Build Snapszer
+        run: sh ios/build.sh iphonesimulator
+
+      - name: Run it
+        run: |
+          set -x
+          DEV=""
+          for name in "iPhone 16" "iPhone 15" "iPhone 14"; do
+              DEV=$(xcrun simctl create snapszer "$name" 2>/dev/null) && break
+              DEV=""
+          done
+          test -n "$DEV"
+          xcrun simctl boot "$DEV"
+          xcrun simctl bootstatus "$DEV" -b
+          APP=$(find build-ios-iphonesimulator -name "snapszer.app" -maxdepth 4 | head -1)
+          xcrun simctl install "$DEV" "$APP"
+          xcrun simctl launch "$DEV" org.edp17.snapszer
+          sleep 30
+          xcrun simctl io "$DEV" screenshot simulator.png
+          xcrun simctl spawn "$DEV" log show --last 3m --style compact \
+              --predicate 'process == "snapszer"' > system-log.txt 2>&1 || true
+          # Still there? A card game writes no log of its own, so the honest
+          # check is that the process did not die while we watched.
+          xcrun simctl spawn "$DEV" launchctl list | grep -i snapszer
+          xcrun simctl shutdown "$DEV" || true
+
+      - name: What it said
+        if: always()
+        run: tail -40 system-log.txt || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snapszer-simulator
+          path: |
+            simulator.png
+            system-log.txt

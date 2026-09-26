@@ -4,7 +4,10 @@
 #include <QStringList>
 #include <QVariantMap>
 
-#if defined(Q_OS_ANDROID) || defined(Q_OS_WASM)
+#if defined(Q_OS_ANDROID) || defined(Q_OS_WASM) || defined(Q_OS_IOS)
+// iOS for the same reason as the other two, but a different one underneath:
+// there is no classic Bluetooth for third-party apps at all, only BLE (or the
+// MFi programme). The LAN game stays.
 #  define SNAPSZER_NO_BLUETOOTH 1
 #endif
 
