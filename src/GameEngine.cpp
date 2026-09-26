@@ -1,4 +1,5 @@
 #include "GameEngine.h"
+#include "BtLink.h"
 #include "LanSession.h"
 
 #include <QByteArray>
@@ -661,11 +662,36 @@ void GameEngine::joinLanGame(const QString& address)
     const QString trimmed = LanSession::normalizeAddress(address);
     if (networkGame() || trimmed.isEmpty())
         return;
+    m_joinDevice.clear();
     setLanAddress(trimmed);
     // Set before connecting: a connection that fails at once overwrites it.
     m_networkStatus = tr("Connecting to %1…").arg(trimmed);
     emit networkChanged();
     m_session->joinHost(trimmed);
+    if (m_session->role() == LanSession::Guest)
+        emit networkChanged(); // now busy connecting
+}
+
+bool GameEngine::bluetoothHosting() const
+{
+    return m_session->bluetoothHosting();
+}
+
+QString GameEngine::bluetoothError() const
+{
+    return m_session->bluetoothError();
+}
+
+void GameEngine::joinBluetoothGame(const QString& address)
+{
+    const QString device = Bt::normalizeAddress(address);
+    if (networkGame() || device.isEmpty())
+        return;
+    m_joinDevice = device;
+    // Set before connecting: a connection that fails at once overwrites it.
+    m_networkStatus = tr("Connecting over Bluetooth…");
+    emit networkChanged();
+    m_session->joinBluetooth(device);
     if (m_session->role() == LanSession::Guest)
         emit networkChanged(); // now busy connecting
 }
@@ -803,11 +829,16 @@ void GameEngine::onNetworkMessage(int peer, const QVariantMap& message)
     }
 
     if (role == LanSession::Guest && !networkGame() && type == QLatin1String("mode")) {
-        const QString address = m_lanAddress;
+        const QString address = m_joinDevice.isEmpty() ? m_lanAddress : m_joinDevice;
+        const bool overBluetooth = !m_joinDevice.isEmpty();
         m_session->stop();
         m_networkStatus.clear();
         emit networkChanged();
-        emit lanRedirect(address, message.value(QStringLiteral("players")).toInt());
+        const int players = message.value(QStringLiteral("players")).toInt();
+        if (overBluetooth)
+            emit btRedirect(address, players);
+        else
+            emit lanRedirect(address, players);
         return;
     }
 

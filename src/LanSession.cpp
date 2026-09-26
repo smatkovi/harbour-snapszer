@@ -37,6 +37,9 @@ const int kPingInterval = 10000;
 // it left the WLAN. Kept generous because phones briefly stall on wake-up.
 const qint64 kIdleTimeout = 45000;
 const int kConnectTimeout = 8000;
+// Bluetooth first has to page the other device; eight seconds is regularly
+// not enough for that, especially when the guest has been idle.
+const int kBluetoothConnectTimeout = 25000;
 
 #ifdef Q_OS_ANDROID
 // Many Android Wi-Fi drivers drop broadcast packets unless an app holds a
@@ -127,6 +130,42 @@ QHostAddress anyIPv4()
 #endif
 }
 
+// A peer is either a TCP socket or an RFCOMM one. The four calls below are
+// the only places where that still shows; everything else writes and reads
+// through QIODevice.
+void linkAbort(QIODevice* device)
+{
+    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
+        socket->abort();
+    else if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
+        socket->abort();
+}
+
+void linkFlush(QIODevice* device)
+{
+    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
+        socket->flush();
+    else if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
+        socket->flush();
+}
+
+void linkDisconnect(QIODevice* device)
+{
+    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
+        socket->disconnectFromHost();
+    else if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
+        socket->disconnectFromHost();
+}
+
+bool linkIsUnconnected(QIODevice* device)
+{
+    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
+        return socket->state() == QAbstractSocket::UnconnectedState;
+    if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
+        return socket->isUnconnected();
+    return true;
+}
+
 } // namespace
 
 // --- LanSession ------------------------------------------------------------------
@@ -178,7 +217,19 @@ bool LanSession::startHosting(const QString& hostName, int players, int maxPeers
     m_players = players;
     m_maxPeers = maxPeers;
     m_accepting = true;
-    if (!m_server.listen(QHostAddress::Any, GamePort)) {
+    const bool onLan = m_server.listen(QHostAddress::Any, GamePort);
+    // Bluetooth as well, so a guest without a common network can still sit
+    // down. A device without an adapter simply hosts on the LAN only.
+    m_btError.clear();
+    m_btServer = new RfcommServer(this);
+    if (m_btServer->listen(Bt::Channel, &m_btError)) {
+        connect(m_btServer, SIGNAL(newConnection(RfcommSocket*)),
+                this, SLOT(onBtConnection(RfcommSocket*)));
+    } else {
+        m_btServer->deleteLater();
+        m_btServer = nullptr;
+    }
+    if (!onLan && !m_btServer) {
         if (error)
             *error = m_server.errorString();
         return false;
@@ -204,6 +255,68 @@ bool LanSession::startHosting(const QString& hostName, int players, int maxPeers
 void LanSession::setAcceptingGuests(bool accepting)
 {
     m_accepting = accepting;
+}
+
+bool LanSession::bluetoothHosting() const
+{
+    return m_btServer && m_btServer->isListening();
+}
+
+void LanSession::joinBluetooth(const QString& address)
+{
+    stop();
+    const QString device = Bt::normalizeAddress(address);
+    if (device.isEmpty()) {
+        emit connectionFailed(tr("Not a Bluetooth address"));
+        return;
+    }
+    m_role = Guest;
+    RfcommSocket* socket = new RfcommSocket(this);
+    m_pendingBt = socket;
+    connect(socket, SIGNAL(connected()), this, SLOT(onBtConnected()));
+    connect(socket, SIGNAL(errorOccurred(QString)), this, SLOT(onBtFailed(QString)));
+    // Bluetooth takes longer than TCP: the radio may first have to find the
+    // other device and set up the link.
+    m_connectTimer.start(kBluetoothConnectTimeout);
+    socket->connectToDevice(device, Bt::Channel);
+}
+
+void LanSession::onBtConnected()
+{
+    RfcommSocket* socket = m_pendingBt;
+    if (!socket || sender() != socket)
+        return;
+    m_connectTimer.stop();
+    m_pendingBt = nullptr;
+    m_nextPeerId = 0;
+    addPeer(socket);
+    m_pingTimer.start();
+    emit peerJoined(0);
+    emit peerConnectedChanged();
+}
+
+void LanSession::onBtFailed(const QString& reason)
+{
+    if (sender() != m_pendingBt || peerConnected())
+        return;
+    stop();
+    emit connectionFailed(reason);
+}
+
+void LanSession::onBtConnection(RfcommSocket* socket)
+{
+    if (!m_accepting || m_peers.size() >= m_maxPeers) {
+        QVariantMap busy;
+        busy.insert(QStringLiteral("t"), QStringLiteral("busy"));
+        writeLine(socket, busy);
+        socket->disconnectFromHost();
+        socket->deleteLater();
+        return;
+    }
+    socket->setParent(this);
+    const Peer* peer = addPeer(socket);
+    emit peerJoined(peer->id);
+    emit peerConnectedChanged();
 }
 
 void LanSession::joinHost(const QString& address)
@@ -265,16 +378,27 @@ void LanSession::stop()
         m_pendingSocket->deleteLater();
         m_pendingSocket = nullptr;
     }
+    if (m_pendingBt) {
+        m_pendingBt->disconnect(this);
+        m_pendingBt->abort();
+        m_pendingBt->deleteLater();
+        m_pendingBt = nullptr;
+    }
     while (!m_peers.isEmpty()) {
         // Detach first: a synchronous disconnected() during flush() must not
         // re-enter removePeer() or emit peerLost while shutting down.
         const Peer peer = m_peers.takeFirst();
         peer.socket->disconnect(this);
-        peer.socket->flush();
-        peer.socket->abort();
+        linkFlush(peer.socket);
+        linkAbort(peer.socket);
         peer.socket->deleteLater();
     }
     m_server.close();
+    if (m_btServer) {
+        m_btServer->close();
+        m_btServer->deleteLater();
+        m_btServer = nullptr;
+    }
     if (m_responder) {
         m_responder->close();
         m_responder->deleteLater();
@@ -287,7 +411,7 @@ void LanSession::stop()
         emit peerConnectedChanged();
 }
 
-void LanSession::writeLine(QTcpSocket* socket, const QVariantMap& message)
+void LanSession::writeLine(QIODevice* socket, const QVariantMap& message)
 {
     QByteArray line = QJsonDocument(QJsonObject::fromVariantMap(message)).toJson(QJsonDocument::Compact);
     line.append('\n');
@@ -313,10 +437,10 @@ void LanSession::dropPeer(int peer)
             continue;
         // Close gracefully so a last message (e.g. why the peer is dropped)
         // still reaches it.
-        QTcpSocket* socket = m_peers[i].socket;
+        QIODevice* socket = m_peers[i].socket;
         m_peers.removeAt(i);
         socket->disconnect(this);
-        socket->disconnectFromHost();
+        linkDisconnect(socket);
         deleteWhenDisconnected(socket);
         emit peerConnectedChanged();
         return;
@@ -400,32 +524,26 @@ void LanSession::acceptConnections()
     }
 }
 
-LanSession::Peer* LanSession::addPeer(QTcpSocket* socket)
+LanSession::Peer* LanSession::addPeer(QIODevice* socket)
 {
     Peer peer;
     peer.id = m_nextPeerId++;
     peer.socket = socket;
     peer.lastSeen = QDateTime::currentMSecsSinceEpoch();
-    socket->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
-#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
-    connect(socket, &QTcpSocket::readyRead, this, &LanSession::onPeerReadyRead);
-    connect(socket, &QTcpSocket::disconnected, this, &LanSession::onPeerDisconnected);
-#else
+    if (QTcpSocket* tcp = qobject_cast<QTcpSocket*>(socket))
+        tcp->setSocketOption(QAbstractSocket::KeepAliveOption, 1);
+    // By name, not by member pointer: an RfcommSocket has disconnected() too,
+    // and this way the same two lines fit both transports (and Qt 4).
     connect(socket, SIGNAL(readyRead()), this, SLOT(onPeerReadyRead()));
     connect(socket, SIGNAL(disconnected()), this, SLOT(onPeerDisconnected()));
-#endif
     m_peers.append(peer);
     return &m_peers.last();
 }
 
-void LanSession::deleteWhenDisconnected(QTcpSocket* socket)
+void LanSession::deleteWhenDisconnected(QIODevice* socket)
 {
-#if QT_VERSION >= QT_VERSION_CHECK(5, 0, 0)
-    connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-#else
     connect(socket, SIGNAL(disconnected()), socket, SLOT(deleteLater()));
-#endif
-    if (socket->state() == QAbstractSocket::UnconnectedState)
+    if (linkIsUnconnected(socket))
         socket->deleteLater();
 }
 
@@ -466,10 +584,10 @@ void LanSession::removePeer(int id, bool notify)
     for (int i = 0; i < m_peers.size(); ++i) {
         if (m_peers[i].id != id)
             continue;
-        QTcpSocket* socket = m_peers[i].socket;
+        QIODevice* socket = m_peers[i].socket;
         m_peers.removeAt(i);
         socket->disconnect(this);
-        socket->abort();
+        linkAbort(socket);
         socket->deleteLater();
         if (notify) {
             emit peerLost(id);

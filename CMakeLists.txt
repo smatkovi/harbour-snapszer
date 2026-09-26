@@ -5,12 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt5 REQUIRED COMPONENTS Core LinguistTools Network Qml Quick)
+find_package(Qt5 REQUIRED COMPONENTS Core DBus LinguistTools Network Qml Quick)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SAILFISHAPP REQUIRED sailfishapp)
 
 add_executable(harbour-snapszer
     main.cpp
+    src/BtLink.cpp
     src/GameCore.cpp
     src/GameEngine.cpp
     src/LanSession.cpp
@@ -24,7 +25,7 @@ target_include_directories(harbour-snapszer PRIVATE
 )
 
 target_link_libraries(harbour-snapszer
-    Qt5::Core Qt5::Network Qt5::Qml Qt5::Quick ${SAILFISHAPP_LIBRARIES}
+    Qt5::Core Qt5::DBus Qt5::Network Qt5::Qml Qt5::Quick ${SAILFISHAPP_LIBRARIES}
 )
 
 set(SNAPSZER_TRANSLATIONS translations/harbour-snapszer-hu.ts)
@@ -41,13 +42,18 @@ if(SNAPSZER_BUILD_TESTS)
 
     # Headless LAN matches over localhost: two players, and a host with two
     # guests plus a computer seat.
-    set(SNAPSZER_ENGINE_SOURCES src/GameCore.cpp src/GameEngine.cpp src/LanSession.cpp
+    set(SNAPSZER_ENGINE_SOURCES src/BtLink.cpp src/GameCore.cpp src/GameEngine.cpp src/LanSession.cpp
         src/MultiCore.cpp src/MultiEngine.cpp)
     add_executable(lan_twoplayer tests/lan_twoplayer.cpp ${SNAPSZER_ENGINE_SOURCES})
     add_executable(lan_multiplayer tests/lan_multiplayer.cpp ${SNAPSZER_ENGINE_SOURCES})
+    # The Bluetooth match needs a second device, so it is built but not added
+    # to the suite; tools/bt-test.sh drives the two ends.
+    add_executable(bt_twoplayer tests/bt_twoplayer.cpp ${SNAPSZER_ENGINE_SOURCES})
+    target_include_directories(bt_twoplayer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(bt_twoplayer Qt5::Core Qt5::DBus Qt5::Gui Qt5::Network)
     foreach(test lan_twoplayer lan_multiplayer)
         target_include_directories(${test} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-        target_link_libraries(${test} Qt5::Core Qt5::Gui Qt5::Network)
+        target_link_libraries(${test} Qt5::Core Qt5::DBus Qt5::Gui Qt5::Network)
         add_test(NAME ${test} COMMAND ${test})
     endforeach()
 endif()

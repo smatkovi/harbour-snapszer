@@ -1,6 +1,6 @@
 Name: harbour-snapszer
-Version: 1.1.0
-Release: 3
+Version: 1.2.0
+Release: 1
 Summary: Classic Hungarian Snapszer card game
 License: MIT
 URL: https://github.com/edp17/harbour-snapszer
@@ -10,6 +10,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-root
 Requires:       sailfishsilica-qt5
 BuildRequires:  pkgconfig(sailfishapp)
 BuildRequires:  pkgconfig(Qt5Core)
+BuildRequires:  pkgconfig(Qt5DBus)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(Qt5Qml)
 BuildRequires:  pkgconfig(Qt5Quick)
@@ -19,7 +20,7 @@ BuildRequires:  qt5-qttools-linguist
 Snapszer is a native Sailfish OS implementation of the classic two-player
 Hungarian card game also known as Snapszli or 66, with three- and
 four-player Schnapsen variants. Play against the computer or against other
-phones in the same Wi-Fi network.
+phones in the same Wi-Fi network or over Bluetooth.
 
 %prep
 %setup -q

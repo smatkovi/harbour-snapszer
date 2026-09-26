@@ -21,6 +21,7 @@
 #include <QUrl>
 #include <cstdio>
 
+#include "BtLink.h"
 #include "GameEngine.h"
 #include "LanSession.h"
 #include "MultiEngine.h"
@@ -112,12 +113,14 @@ int main(int argc, char* argv[])
     GameEngine engine;
     MultiEngine multi(&engine);
     LanBrowser browser;
+    BtDevices bluetooth;
 
     QDeclarativeView view;
     view.setResizeMode(QDeclarativeView::SizeRootObjectToView);
     view.rootContext()->setContextProperty(QString::fromLatin1("snapszerEngine"), &engine);
     view.rootContext()->setContextProperty(QString::fromLatin1("multiEngine"), &multi);
     view.rootContext()->setContextProperty(QString::fromLatin1("lanBrowser"), &browser);
+    view.rootContext()->setContextProperty(QString::fromLatin1("btDevices"), &bluetooth);
     view.setSource(QUrl::fromLocalFile(root + QString::fromLatin1("/qml/harbour-snapszer.qml")));
     if (view.status() == QDeclarativeView::Error) {
         const QList<QDeclarativeError> errors = view.errors();

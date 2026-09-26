@@ -53,6 +53,9 @@ class MultiEngine : public QObject
     Q_PROPERTY(bool lanHosting READ lanHosting NOTIFY networkChanged)
     Q_PROPERTY(bool lanBusy READ lanBusy NOTIFY networkChanged)
     Q_PROPERTY(QString networkStatus READ networkStatus NOTIFY networkChanged)
+    // Whether guests can come over Bluetooth while hosting, and why not.
+    Q_PROPERTY(bool bluetoothHosting READ bluetoothHosting NOTIFY networkChanged)
+    Q_PROPERTY(QString bluetoothError READ bluetoothError NOTIFY networkChanged)
     Q_PROPERTY(QVariantList lobby READ lobby NOTIFY networkChanged)
 
 public:
@@ -80,6 +83,8 @@ public:
     Q_INVOKABLE void hostLanGame(int players);
     Q_INVOKABLE void startLanMatch();
     Q_INVOKABLE void joinLanGame(const QString& address);
+    // Same table, reached over Bluetooth: `address` is a device address.
+    Q_INVOKABLE void joinBluetoothGame(const QString& address);
     Q_INVOKABLE void cancelLan();
 
     bool active() const { return m_active; }
@@ -116,6 +121,8 @@ public:
     bool lanHosting() const { return m_lobbyOpen; }
     bool lanBusy() const;
     QString networkStatus() const { return m_networkStatus; }
+    bool bluetoothHosting() const;
+    QString bluetoothError() const;
     QVariantList lobby() const;
 
     // Test hook: the seat that joined players occupy in the host's numbering.
@@ -134,6 +141,8 @@ signals:
     // The host at `address` runs a table of a different size; join it with
     // the engine for `players`.
     void lanRedirect(const QString& address, int players);
+    // The same for a table joined over Bluetooth; see GameEngine.
+    void btRedirect(const QString& address, int players);
     void cardAnimationRequested(const QString& cardId, int seat);
     void trickAnimationRequested(int winnerSeat);
 
@@ -203,4 +212,5 @@ private:
     int m_netSeq = 0;
     QString m_networkStatus;
     QString m_joinAddress;
+    bool m_joinOverBluetooth = false;
 };

@@ -1,6 +1,7 @@
 #include "MultiEngine.h"
 
 #include "GameEngine.h"
+#include "BtLink.h"
 #include "LanSession.h"
 
 #include <QDateTime>
@@ -779,11 +780,39 @@ void MultiEngine::joinLanGame(const QString& address)
     m_lobbyOpen = false;
     m_seatNames.clear();
     m_joinAddress = trimmed;
+    m_joinOverBluetooth = false;
     m_settings->setLanAddress(trimmed);
     // Set before connecting: a connection that fails at once overwrites it.
     m_networkStatus = tr("Connecting to %1…").arg(trimmed);
     emit networkChanged();
     m_session->joinHost(trimmed);
+    if (m_session->role() == LanSession::Guest)
+        emit networkChanged(); // now busy connecting
+}
+
+bool MultiEngine::bluetoothHosting() const
+{
+    return m_session->bluetoothHosting();
+}
+
+QString MultiEngine::bluetoothError() const
+{
+    return m_session->bluetoothError();
+}
+
+void MultiEngine::joinBluetoothGame(const QString& address)
+{
+    const QString device = Bt::normalizeAddress(address);
+    if (networkGame() || device.isEmpty())
+        return;
+    m_lobbyOpen = false;
+    m_seatNames.clear();
+    m_joinAddress = device;
+    m_joinOverBluetooth = true;
+    // Set before connecting: a connection that fails at once overwrites it.
+    m_networkStatus = tr("Connecting over Bluetooth…");
+    emit networkChanged();
+    m_session->joinBluetooth(device);
     if (m_session->role() == LanSession::Guest)
         emit networkChanged(); // now busy connecting
 }
@@ -1023,7 +1052,10 @@ void MultiEngine::onMessage(int peer, const QVariantMap& message)
         m_session->stop();
         m_networkStatus.clear();
         emit networkChanged();
-        emit lanRedirect(m_joinAddress, players);
+        if (m_joinOverBluetooth)
+            emit btRedirect(m_joinAddress, players);
+        else
+            emit lanRedirect(m_joinAddress, players);
         return;
     }
     if (type == QLatin1String("busy") || type == QLatin1String("version")) {

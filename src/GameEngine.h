@@ -59,6 +59,9 @@ class GameEngine : public QObject
     Q_PROPERTY(bool lanGuest READ lanGuest NOTIFY networkChanged)
     Q_PROPERTY(bool lanBusy READ lanBusy NOTIFY networkChanged)
     Q_PROPERTY(QString networkStatus READ networkStatus NOTIFY networkChanged)
+    // Whether guests can come over Bluetooth while hosting, and why not.
+    Q_PROPERTY(bool bluetoothHosting READ bluetoothHosting NOTIFY networkChanged)
+    Q_PROPERTY(QString bluetoothError READ bluetoothError NOTIFY networkChanged)
     Q_PROPERTY(QString lanAddress READ lanAddress WRITE setLanAddress NOTIFY settingsChanged)
 
 public:
@@ -87,6 +90,8 @@ public:
 
     Q_INVOKABLE void hostLanGame();
     Q_INVOKABLE void joinLanGame(const QString& address);
+    // Same table, reached over Bluetooth: `address` is a device address.
+    Q_INVOKABLE void joinBluetoothGame(const QString& address);
     Q_INVOKABLE void cancelLan();
 
     QString status() const;
@@ -140,6 +145,8 @@ public:
     bool lanGuest() const { return m_mode == Mode::LanGuest; }
     bool lanBusy() const;
     QString networkStatus() const { return m_networkStatus; }
+    bool bluetoothHosting() const;
+    QString bluetoothError() const;
     QString lanAddress() const { return m_lanAddress; }
     void setLanAddress(const QString& value);
 
@@ -155,6 +162,9 @@ signals:
     // The host at `address` runs a table of a different size; join it with
     // the engine for `players`.
     void lanRedirect(const QString& address, int players);
+    // The same, for a table joined over Bluetooth: the address is a device
+    // address and the retry has to take the Bluetooth way again.
+    void btRedirect(const QString& address, int players);
     void visualPhaseChanged();
     void pausedChanged();
     void cardAnimationRequested(const QString& cardId, int playedBy, int oldHandIndex);
@@ -221,6 +231,8 @@ private:
 
     Mode m_mode = Mode::Ai;
     LanSession* m_session = nullptr;
+    // The device address when the guest came over Bluetooth, empty for LAN.
+    QString m_joinDevice;
     QList<QVariantMap> m_remoteQueue;
     bool m_processingRemote = false;
     bool m_awaitingHost = false;

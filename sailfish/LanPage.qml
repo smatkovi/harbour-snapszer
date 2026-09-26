@@ -47,6 +47,21 @@ Page {
         }
     }
 
+    // The same over Bluetooth. The host answers a two-player join with its
+    // real table size, and btRedirect brings us back here with it.
+    function joinBt(address, players) {
+        useMulti = players > 2
+        if (useMulti) {
+            if (!engine.networkGame)
+                engine.cancelLan()
+            multi.joinBluetoothGame(address)
+        } else {
+            if (!multi.networkGame)
+                multi.cancelLan()
+            engine.joinBluetoothGame(address)
+        }
+    }
+
     function host(players) {
         useMulti = players > 2
         if (useMulti) {
@@ -60,7 +75,10 @@ Page {
         }
     }
 
-    Component.onCompleted: lanBrowser.search()
+    Component.onCompleted: {
+        lanBrowser.search()
+        btDevices.refresh()
+    }
     // Leaving this page without a started game cancels hosting or joining.
     Component.onDestruction: {
         if (engine && !engine.networkGame)
@@ -79,6 +97,14 @@ Page {
         target: multi
         onLanRedirect: page.join(address, players)
     }
+    Connections {
+        target: engine
+        onBtRedirect: page.joinBt(address, players)
+    }
+    Connections {
+        target: multi
+        onBtRedirect: page.joinBt(address, players)
+    }
 
     Connections {
         target: engine
@@ -95,7 +121,10 @@ Page {
         PullDownMenu {
             MenuItem {
                 text: qsTr("Search again")
-                onClicked: lanBrowser.search()
+                onClicked: {
+                    lanBrowser.search()
+                    btDevices.refresh()
+                }
             }
         }
 
@@ -107,8 +136,8 @@ Page {
             spacing: Theme.paddingMedium
 
             PageHeader {
-                title: qsTr("LAN game")
-                description: qsTr("Against other phones in the same network")
+                title: qsTr("Play together")
+                description: qsTr("Against other phones, over Wi-Fi or Bluetooth")
             }
 
             Label {
@@ -117,7 +146,7 @@ Page {
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryHighlightColor
-                text: qsTr("All phones need Snapszer and must be connected to the same Wi-Fi network; a hotspot opened by one of the phones works too. Your games against the computer are kept and continue afterwards.")
+                text: qsTr("All phones need Snapszer. Over Wi-Fi they must be in the same network; a hotspot opened by one of the phones works too. Without a network, Bluetooth does it: pair the phones once in the system settings. Your games against the computer are kept and continue afterwards.")
             }
 
             Item {
@@ -213,6 +242,18 @@ Page {
                       : qsTr("This phone is not connected to a network")
             }
 
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeExtraSmall
+                color: Theme.secondaryColor
+                text: btDevices.available
+                      ? qsTr("Bluetooth is open as well: %1").arg(btDevices.localName !== ""
+                            ? btDevices.localName : btDevices.localAddress)
+                      : qsTr("Bluetooth is switched off, so guests can only come over the network")
+            }
+
             BackgroundItem {
                 width: parent.width
                 height: internetColumn.height + Theme.paddingMedium
@@ -288,6 +329,49 @@ Page {
                     }
                 }
             }
+
+            SectionHeader { text: qsTr("Join over Bluetooth") }
+
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                visible: btDevices.devices.length === 0
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.secondaryColor
+                text: btDevices.available
+                      ? qsTr("No paired phones. Pair the two phones once in the system settings, then pull down to search again.")
+                      : qsTr("Bluetooth is switched off.")
+            }
+
+            Repeater {
+                model: btDevices.devices
+                BackgroundItem {
+                    width: content.width
+                    height: Theme.itemSizeMedium
+                    enabled: !page.busy
+                    onClicked: page.joinBt(modelData.address, 2)
+
+                    Column {
+                        x: Theme.horizontalPageMargin
+                        width: parent.width - 2 * Theme.horizontalPageMargin
+                        anchors.verticalCenter: parent.verticalCenter
+                        Label {
+                            width: parent.width
+                            text: modelData.name
+                            truncationMode: TruncationMode.Fade
+                            color: parent.parent.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        }
+                        Label {
+                            text: modelData.address
+                            font.pixelSize: Theme.fontSizeExtraSmall
+                            color: Theme.secondaryColor
+                        }
+                    }
+                }
+            }
+
+            SectionHeader { text: qsTr("Join by address") }
 
             TextField {
                 id: addressField

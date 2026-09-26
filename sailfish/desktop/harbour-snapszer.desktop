@@ -7,6 +7,12 @@ Categories=Game;
 X-Sailfish-ApplicationType=Silica
 
 [X-Sailjail]
-Permissions=Internet
+Permissions=Internet;Bluetooth
 OrganizationName=org.edp17
 ApplicationName=harbour-snapszer
+# Bluetooth needs AF_BLUETOOTH sockets, and Sailjail's seccomp filter allows
+# only the protocols its permissions name (Base adds "unix", Internet
+# "inet,inet6,netlink"; none of them adds "bluetooth"), so inside the sandbox
+# every RFCOMM socket fails with "Operation not supported". The identity above
+# stays as it is: the settings file path depends on it.
+Sandboxing=Disabled

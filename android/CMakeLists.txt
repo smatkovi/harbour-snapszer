@@ -14,6 +14,8 @@ qt_add_executable(snapszer
     main.cpp
     ScreenHelper.h
     ${SNAPSZER_ROOT}/src/AppSettings.h
+    ${SNAPSZER_ROOT}/src/BtLink.cpp
+    ${SNAPSZER_ROOT}/src/BtLink.h
     ${SNAPSZER_ROOT}/src/GameCore.cpp
     ${SNAPSZER_ROOT}/src/GameCore.h
     ${SNAPSZER_ROOT}/src/GameEngine.cpp

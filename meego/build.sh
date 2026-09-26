@@ -25,13 +25,13 @@ JOBS=${JOBS:-8}
 OUT=$HERE/build/meego/$MODE
 mkdir -p "$OUT"
 
-ENGINE_SRC="src/GameCore.cpp src/GameEngine.cpp src/LanSession.cpp src/MultiCore.cpp src/MultiEngine.cpp"
-MOC_HEADERS="src/GameEngine.h src/MultiEngine.h src/LanSession.h"
+ENGINE_SRC="src/BtLink.cpp src/GameCore.cpp src/GameEngine.cpp src/LanSession.cpp src/MultiCore.cpp src/MultiEngine.cpp"
+MOC_HEADERS="src/GameEngine.h src/MultiEngine.h src/LanSession.h src/BtLink.h"
 
 QT4_FLAGS="-std=gnu++17 -O2 -Wall -Wno-register -Wno-deprecated-declarations -Wno-nonnull \
  -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DQT_NO_DEBUG \
  -I$HERE/meego/compat -include $HERE/meego/compat/qt4compat.h -I$HERE/src"
-QT4_MODULES="QtCore QtGui QtNetwork QtScript QtDeclarative"
+QT4_MODULES="QtCore QtDBus QtGui QtNetwork QtScript QtDeclarative"
 
 case "$MODE" in
 arm|tests-arm)
@@ -48,7 +48,7 @@ arm|tests-arm)
     # instead of our exported copies.
     LDFLAGS="--sysroot=$SYSROOT -static-libstdc++ -static-libgcc -Wl,-O1 -Wl,--as-needed \
  -Wl,--exclude-libs,ALL -Wl,--dynamic-linker=/lib/ld-linux.so.3"
-    LIBS="-lQtDeclarative -lQtScript -lQtNetwork -lQtGui -lQtCore -lpthread"
+    LIBS="-lQtDeclarative -lQtScript -lQtNetwork -lQtDBus -lQtGui -lQtCore -lpthread"
     ;;
 x86|tests-qt4)
     # The Qt Simulator's Qt 4.7.4 (the device's version). Its QtGui only
@@ -63,14 +63,14 @@ x86|tests-qt4)
     CXXFLAGS="$QT4_FLAGS -I$QTINC"
     for m in $QT4_MODULES; do CXXFLAGS="$CXXFLAGS -I$QTINC/$m"; done
     LDFLAGS="-L$X86QT/lib -Wl,-rpath,$X86QT/lib"
-    LIBS="-lQtDeclarative -lQtScript -lQtNetwork -lQtGui -lQtCore -lpthread"
+    LIBS="-lQtDeclarative -lQtScript -lQtNetwork -lQtDBus -lQtGui -lQtCore -lpthread"
     ;;
 tests-qt5)
     CXX=${CXX:-g++}
     MOC=${MOC:-/usr/bin/moc}
-    CXXFLAGS="-std=gnu++17 -O2 -Wall -fPIC -I$HERE/src $(pkg-config --cflags Qt5Core Qt5Gui Qt5Network)"
+    CXXFLAGS="-std=gnu++17 -O2 -Wall -fPIC -I$HERE/src $(pkg-config --cflags Qt5Core Qt5DBus Qt5Gui Qt5Network)"
     LDFLAGS=
-    LIBS="$(pkg-config --libs Qt5Core Qt5Gui Qt5Network) -lpthread"
+    LIBS="$(pkg-config --libs Qt5Core Qt5DBus Qt5Gui Qt5Network) -lpthread"
     ;;
 *)
     echo "usage: $0 arm|x86|tests-qt4|tests-qt5|tests-arm" >&2; exit 2 ;;
@@ -108,7 +108,7 @@ MK=$OUT/Makefile
         printf '\t$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS)\n'
         ;;
     tests-qt4|tests-arm)
-        echo "all: test_multicore lan_twoplayer lan_multiplayer"
+        echo "all: test_multicore lan_twoplayer lan_multiplayer bt_twoplayer bt_echo"
         echo "test_multicore: \$(SRC)/tests/test_multicore.cpp GameCore.o MultiCore.o"
         printf '\t$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $< GameCore.o MultiCore.o\n'
         echo "lan_twoplayer: \$(SRC)/meego/tests/lan_twoplayer_qt4.cpp \$(ENGINE_OBJS)"
@@ -116,12 +116,17 @@ MK=$OUT/Makefile
         echo "lan_multiplayer_qt4.moc: \$(SRC)/meego/tests/lan_multiplayer_qt4.cpp"; printf '\t$(MOC) $< -o $@\n'
         echo "lan_multiplayer: \$(SRC)/meego/tests/lan_multiplayer_qt4.cpp lan_multiplayer_qt4.moc \$(ENGINE_OBJS)"
         printf '\t$(CXX) $(CXXFLAGS) -I. $(LDFLAGS) -o $@ $< $(ENGINE_OBJS) $(LIBS)\n'
+        # Two devices are needed to run this one; the suite only builds it.
+        echo "bt_twoplayer: \$(SRC)/tests/bt_twoplayer.cpp \$(ENGINE_OBJS)"
+        printf '\t$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $< $(ENGINE_OBJS) $(LIBS)\n'
+        echo "bt_echo: \$(SRC)/tests/bt_echo.cpp \$(ENGINE_OBJS)"
+        printf '\t$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $< $(ENGINE_OBJS) $(LIBS)\n'
         ;;
     tests-qt5)
-        echo "all: test_multicore lan_twoplayer lan_multiplayer"
+        echo "all: test_multicore lan_twoplayer lan_multiplayer bt_twoplayer bt_echo"
         echo "test_multicore: \$(SRC)/tests/test_multicore.cpp GameCore.o MultiCore.o"
         printf '\t$(CXX) $(CXXFLAGS) -o $@ $< GameCore.o MultiCore.o\n'
-        for t in lan_twoplayer lan_multiplayer; do
+        for t in lan_twoplayer lan_multiplayer bt_twoplayer bt_echo; do
             echo "$t: \$(SRC)/tests/$t.cpp \$(ENGINE_OBJS)"
             printf '\t$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $< $(ENGINE_OBJS) $(LIBS)\n'
         done

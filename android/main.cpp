@@ -5,6 +5,7 @@
 #include <QQuickStyle>
 #include <QTranslator>
 
+#include "BtLink.h"
 #include "GameEngine.h"
 #include "LanSession.h"
 #include "MultiEngine.h"
@@ -27,6 +28,7 @@ int main(int argc, char *argv[])
     GameEngine engine;
     MultiEngine multi(&engine);
     LanBrowser browser;
+    BtDevices bluetooth;
     ScreenHelper screen;
     const auto updateScreen = [&]() {
         screen.setLanActive(engine.networkGame() || multi.networkGame() || engine.lanBusy() || multi.lanBusy());
@@ -54,6 +56,9 @@ int main(int argc, char *argv[])
     qml.rootContext()->setContextProperty(QStringLiteral("snapszerEngine"), &engine);
     qml.rootContext()->setContextProperty(QStringLiteral("multiEngine"), &multi);
     qml.rootContext()->setContextProperty(QStringLiteral("lanBrowser"), &browser);
+    // Android has no RFCOMM for apps; this one answers "no Bluetooth" and the
+    // pages that use it stay hidden.
+    qml.rootContext()->setContextProperty(QStringLiteral("btDevices"), &bluetooth);
     QObject::connect(&qml, &QQmlApplicationEngine::objectCreationFailed, &app,
                      []() { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     qml.loadFromModule("Snapszer", "Main");
