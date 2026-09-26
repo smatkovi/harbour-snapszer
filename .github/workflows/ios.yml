@@ -83,6 +83,13 @@ jobs:
           host: mac
           target: desktop
           arch: clang_64
+          # qsb, the shader compiler, runs on the build machine and is needed to
+          # cross-build qtdeclarative. Taking it from the binary package spares
+          # a source build of qtshadertools for the host -- which did run, but
+          # installed only Qt6ShaderTools and Qt6ShaderToolsPrivate, so the
+          # cross build then stopped at "Failed to find the host tool Qt6::qsb,
+          # it is part of the Qt6ShaderToolsTools package".
+          modules: 'qtshadertools'
           dir: ${{ runner.temp }}/qt-host
           set-env: false
 

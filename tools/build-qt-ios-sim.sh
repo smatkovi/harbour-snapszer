@@ -53,27 +53,18 @@ build_module() {
 build_module qtbase \
   -DFEATURE_sql=OFF -DFEATURE_testlib=OFF -DFEATURE_printsupport=OFF \
   -DFEATURE_dbus=OFF -DFEATURE_concurrent=OFF
-# qtshadertools must exist for the HOST too: cross-building it (and later
-# qtdeclarative) needs the host qsb shader compiler, which the binary Qt package
-# does not ship.
-echo "== qtshadertools (host tools)"
-HOSTSRC="$SRC/qtshadertools-everywhere-src-$VER"
-HOSTTAR="$SRC/qtshadertools-$VER.tar.xz"
-[ -f "$HOSTTAR" ] || curl -sSL --retry 3 -o "$HOSTTAR" "$BASE/qtshadertools-everywhere-src-$VER.tar.xz"
-[ -d "$HOSTSRC" ] || tar xf "$HOSTTAR" -C "$SRC"
-# always configure this one from scratch: a cached build tree leaves ninja with
-# "no work to do" and then the qsb tool - and its Qt6ShaderToolsTools package -
-# never gets built, which is exactly what the cross build needs.
-rm -rf "$BLD/qtshadertools-host"
-cmake -S "$HOSTSRC" -B "$BLD/qtshadertools-host" -GNinja \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH="$HOSTQT" \
-      -DCMAKE_INSTALL_PREFIX="$HOSTQT" \
-      -DQT_BUILD_EXAMPLES=OFF -DQT_BUILD_TESTS=OFF -DQT_BUILD_TOOLS_BY_DEFAULT=ON
-cmake --build "$BLD/qtshadertools-host" -j3
-cmake --install "$BLD/qtshadertools-host"
-echo "   host qsb: $(ls "$HOSTQT/bin/qsb" 2>/dev/null || echo MISSING)"
-echo "   host cmake packages:"; ls "$HOSTQT/lib/cmake" | grep -i shadertools || echo "   (keine ShaderTools-Pakete!)"
+# The host needs qsb, the shader compiler, to cross-build qtdeclarative. It
+# comes from the binary Qt package (install-qt-action with modules:
+# qtshadertools) -- building it from source here installed the module but not
+# the Qt6ShaderToolsTools package, and the cross build then stopped at
+# "Failed to find the host tool Qt6::qsb".
+if [ -x "$HOSTQT/bin/qsb" ]; then
+  echo "== host qsb: $HOSTQT/bin/qsb"
+else
+  echo "== FEHLER: kein qsb im Host-Qt ($HOSTQT/bin)."
+  echo "   Das Host-Qt braucht das Modul qtshadertools."
+  exit 1
+fi
 
 build_module qtshadertools          # required to build qtdeclarative
 build_module qtdeclarative          # Quick, QuickControls2, QuickDialogs2
