@@ -7,7 +7,9 @@ name: iOS
 on:
   workflow_dispatch:
   push:
-    branches: [ master, main ]
+    # The app ports live on their own branches; the iOS one grew out of the
+    # Android shell, so that is where it is built from for now.
+    branches: [ master, android ]
     paths:
       - 'src/**'
       - 'android/**'
