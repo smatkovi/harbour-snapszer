@@ -20,6 +20,19 @@ int main(int argc, char** argv)
     const QString peer = argc > 2 ? QString::fromLatin1(argv[2]) : QString();
     std::printf("adapter %s available %d\n", qPrintable(Bt::localAddress()), int(Bt::available()));
 
+    // Die gekoppelten Geräte, so wie die Beitrittsliste sie zeigt: das ist der
+    // einzige Teil, den die Verbindungsprüfung sonst nicht anfasst.
+    BtDevices devices;
+    const QVariantList paired = devices.devices();
+    std::printf("local name '%s', %d paired device(s)\n",
+                qPrintable(devices.localName()), int(paired.size()));
+    for (int i = 0; i < paired.size(); ++i) {
+        const QVariantMap entry = paired.at(i).toMap();
+        std::printf("  %s  %s\n",
+                    qPrintable(entry.value(QString::fromLatin1("address")).toString()),
+                    qPrintable(entry.value(QString::fromLatin1("name")).toString()));
+    }
+
     if (mode == QLatin1String("listen")) {
         RfcommServer server;
         QString error;

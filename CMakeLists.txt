@@ -49,8 +49,12 @@ if(SNAPSZER_BUILD_TESTS)
     # The Bluetooth match needs a second device, so it is built but not added
     # to the suite; tools/bt-test.sh drives the two ends.
     add_executable(bt_twoplayer tests/bt_twoplayer.cpp ${SNAPSZER_ENGINE_SOURCES})
-    target_include_directories(bt_twoplayer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(bt_twoplayer Qt5::Core Qt5::DBus Qt5::Gui Qt5::Network)
+    # bt_echo is the bare link check: no game, only BtLink and the paired list.
+    add_executable(bt_echo tests/bt_echo.cpp ${SNAPSZER_ENGINE_SOURCES})
+    foreach(bt bt_twoplayer bt_echo)
+        target_include_directories(${bt} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+        target_link_libraries(${bt} Qt5::Core Qt5::DBus Qt5::Gui Qt5::Network)
+    endforeach()
     foreach(test lan_twoplayer lan_multiplayer)
         target_include_directories(${test} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
         target_link_libraries(${test} Qt5::Core Qt5::DBus Qt5::Gui Qt5::Network)

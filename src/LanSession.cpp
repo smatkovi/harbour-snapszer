@@ -135,34 +135,34 @@ QHostAddress anyIPv4()
 // through QIODevice.
 void linkAbort(QIODevice* device)
 {
-    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
-        socket->abort();
-    else if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
-        socket->abort();
+    if (QTcpSocket* tcp = qobject_cast<QTcpSocket*>(device))
+        tcp->abort();
+    else if (RfcommSocket* rfcomm = qobject_cast<RfcommSocket*>(device))
+        rfcomm->abort();
 }
 
 void linkFlush(QIODevice* device)
 {
-    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
-        socket->flush();
-    else if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
-        socket->flush();
+    if (QTcpSocket* tcp = qobject_cast<QTcpSocket*>(device))
+        tcp->flush();
+    else if (RfcommSocket* rfcomm = qobject_cast<RfcommSocket*>(device))
+        rfcomm->flush();
 }
 
 void linkDisconnect(QIODevice* device)
 {
-    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
-        socket->disconnectFromHost();
-    else if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
-        socket->disconnectFromHost();
+    if (QTcpSocket* tcp = qobject_cast<QTcpSocket*>(device))
+        tcp->disconnectFromHost();
+    else if (RfcommSocket* rfcomm = qobject_cast<RfcommSocket*>(device))
+        rfcomm->disconnectFromHost();
 }
 
 bool linkIsUnconnected(QIODevice* device)
 {
-    if (QTcpSocket* socket = qobject_cast<QTcpSocket*>(device))
-        return socket->state() == QAbstractSocket::UnconnectedState;
-    if (RfcommSocket* socket = qobject_cast<RfcommSocket*>(device))
-        return socket->isUnconnected();
+    if (QTcpSocket* tcp = qobject_cast<QTcpSocket*>(device))
+        return tcp->state() == QAbstractSocket::UnconnectedState;
+    if (RfcommSocket* rfcomm = qobject_cast<RfcommSocket*>(device))
+        return rfcomm->isUnconnected();
     return true;
 }
 
