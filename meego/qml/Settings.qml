@@ -164,6 +164,37 @@ Page {
                 }
             }
 
+            Item {
+                width: parent.width
+                height: waitSwitch.height
+                Column {
+                    x: Style.horizontalPageMargin
+                    width: parent.width - 2 * Style.horizontalPageMargin - waitSwitch.width - Style.paddingMedium
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        width: parent.width
+                        text: qsTr("Put the trick away by tapping")
+                        color: Style.primaryColor
+                        font.pixelSize: Style.fontSizeSmall
+                    }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: qsTr("The finished trick stays on the table until you tap it")
+                        color: Style.secondaryColor
+                        font.pixelSize: Style.fontSizeExtraSmall
+                    }
+                }
+                Switch {
+                    id: waitSwitch
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.horizontalPageMargin
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: snapszerEngine.waitAfterTrick
+                    onCheckedChanged: snapszerEngine.waitAfterTrick = checked
+                }
+            }
+
             Text {
                 x: Style.horizontalPageMargin
                 text: qsTr("Card speed") + ":  "
@@ -195,6 +226,7 @@ Page {
                     snapszerEngine.aiPlayDelay = 650
                     snapszerEngine.animationsEnabled = true
                     snapszerEngine.animationSpeed = 1.0
+                    snapszerEngine.waitAfterTrick = false
                 }
             }
         }

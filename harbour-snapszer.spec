@@ -1,5 +1,5 @@
 Name: harbour-snapszer
-Version: 1.2.0
+Version: 1.3.0
 Release: 1
 Summary: Classic Hungarian Snapszer card game
 License: MIT

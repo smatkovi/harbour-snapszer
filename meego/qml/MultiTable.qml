@@ -364,6 +364,13 @@ Item {
                 z: index
             }
         }
+        // With "put the trick away by tapping" the finished trick waits here.
+        MouseArea {
+            anchors.fill: parent
+            z: 50
+            enabled: engine.visualPhase === 2 && snapszerEngine.waitAfterTrick && !engine.networkGame
+            onClicked: engine.continueTrick()
+        }
 
         // Dreierschnapsen talon while it is still on the table.
         Row {

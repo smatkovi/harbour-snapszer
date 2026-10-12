@@ -423,7 +423,8 @@ PageStackWindow {
                 anchors.top: aiHandArea.bottom
                 anchors.topMargin: -Style.paddingSmall
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: engine.opponentDisplayName + "  •  " + qsTr("%1 points").arg(engine.cpuPoints)
+                // Only the name: the opponent counts for himself, as at a real table.
+                text: engine.opponentDisplayName
                 font.pixelSize: Style.fontSizeExtraSmall
                 color: Style.secondaryColor
             }
@@ -437,6 +438,13 @@ PageStackWindow {
                 anchors.topMargin: mainPage.landscape ? Style.paddingLarge : Style.paddingSmall
                 width: Style.itemSizeMedium * 0.72 * mainPage.cs
                 height: width * 1.4
+                // The opponent's first trick may be looked at (soft rules); the rest of
+                // his pile stays his.
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: engine.cpuWonCards.length > 1
+                    onClicked: { tricksPanel.mine = false; tricksPanel.shown = !tricksPanel.shown }
+                }
                 Card {
                     anchors.fill: parent
                     visible: engine.cpuWonCards.length > 0
@@ -468,7 +476,7 @@ PageStackWindow {
                     width: Style.itemSizeMedium * 0.92 * mainPage.cs
                     height: width * 1.4
                     anchors.centerIn: parent
-                    anchors.horizontalCenterOffset: Style.paddingMedium
+                    anchors.horizontalCenterOffset: talonDeck.width * 0.4   // more of the trump card in view
                     visible: engine.hasTrumpCard
                     cardId: engine.hasTrumpCard && engine.trumpCard.id ? engine.trumpCard.id : "0_11"
                     cardStyle: engine.cardStyle
@@ -481,7 +489,7 @@ PageStackWindow {
                     width: Style.itemSizeMedium * 0.98 * mainPage.cs
                     height: width * 1.4
                     anchors.centerIn: parent
-                    anchors.horizontalCenterOffset: -Style.paddingSmall
+                    anchors.horizontalCenterOffset: -Style.paddingMedium
                     visible: engine.faceDownStockSize > 0
                     cardId: "0_10"
                     cardStyle: engine.cardStyle
@@ -522,6 +530,51 @@ PageStackWindow {
                         opacity: mainPage.hiddenTrickIds[modelData.id] ? 0 : 1
                         z: index
                     }
+                }
+                // A declared 20 or 40: the partner card is shown next to the led card,
+                // the value above it, until the trick is put away.
+                Card {
+                    id: marriagePartner
+                    property variant marriage: engine.lastMarriage
+                    visible: marriage.points > 0 && engine.trickCards.length > 0
+                    opacity: engine.trickCards.length > 0 && !mainPage.hiddenTrickIds[engine.trickCards[0].id] ? 1 : 0
+                    width: Style.itemSizeLarge * 0.78 * mainPage.cs
+                    height: width * 1.4
+                    x: parent.width / 2 - width / 2 - Style.itemSizeLarge * 1.08 * mainPage.cs * 0.28 - width * 0.6
+                    y: parent.height / 2 - height / 2 - Style.paddingMedium
+                    rotation: -14
+                    z: -1
+                    cardId: marriage.partnerId ? marriage.partnerId : "0_10"
+                    cardStyle: engine.cardStyle
+                    faceUp: true
+                }
+                Rectangle {
+                    visible: marriagePartner.visible
+                    opacity: marriagePartner.opacity
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.top
+                    anchors.bottomMargin: -Style.paddingSmall
+                    width: marriageLabel.width + 2 * Style.paddingMedium
+                    height: marriageLabel.height + Style.paddingSmall
+                    radius: height / 2
+                    color: "#dd202020"
+                    border.color: Style.highlightColor
+                    z: 40
+                    Text {
+                        id: marriageLabel
+                        anchors.centerIn: parent
+                        text: marriagePartner.marriage.points + "!"
+                        font.pixelSize: Style.fontSizeMedium
+                        font.bold: true
+                        color: Style.highlightColor
+                    }
+                }
+                // With "put the trick away by tapping" the finished trick waits here.
+                MouseArea {
+                    anchors.fill: parent
+                    z: 50
+                    enabled: engine.visualPhase === 2 && engine.waitAfterTrick && !engine.networkGame
+                    onClicked: engine.continueTrick()
                 }
             }
 
@@ -664,6 +717,11 @@ PageStackWindow {
                 height: width * 1.4
                 z: 2
 
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: engine.playerWonCards.length > 0
+                    onClicked: { tricksPanel.mine = true; tricksPanel.shown = !tricksPanel.shown }
+                }
                 Card {
                     anchors.fill: parent
                     visible: engine.playerWonCards.length > 0
@@ -680,6 +738,71 @@ PageStackWindow {
                     text: qsTr("You %1").arg(Math.floor(engine.playerWonCards.length / 2))
                     font.pixelSize: Style.fontSizeExtraSmall
                     color: Style.secondaryColor
+                }
+            }
+
+            // Your own tricks, pair by pair (soft rules: looking through your own
+            // tricks is allowed). Opened from the pile of won cards, closed by a tap.
+            Rectangle {
+                id: tricksPanel
+                property bool shown: false
+                visible: shown && (mine ? engine.playerWonCards.length > 0 : engine.cpuWonCards.length > 1)
+                property bool mine: true
+                z: 600
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - 2 * Style.horizontalPageMargin
+                height: tricksColumn.height + 2 * Style.paddingLarge
+                radius: Style.paddingSmall
+                color: "#f0202020"
+                border.color: Style.highlightColor
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: tricksPanel.shown = false
+                }
+
+                Column {
+                    id: tricksColumn
+                    anchors.centerIn: parent
+                    width: parent.width - 2 * Style.paddingLarge
+                    spacing: Style.paddingMedium
+
+                    Text {
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        text: mine ? qsTr("Your tricks") : qsTr("First trick of %1").arg(engine.opponentDisplayName)
+                        font.pixelSize: Style.fontSizeLarge
+                        color: Style.highlightColor
+                    }
+
+                    Grid {
+                        id: tricksGrid
+                        columns: 4
+                        spacing: Style.paddingSmall
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        property real cardWidth: (tricksColumn.width - 3 * spacing) / 4
+                        Repeater {
+                            model: !tricksPanel.visible ? 0 : tricksPanel.mine ? engine.playerWonCards : engine.cpuWonCards.slice(0, 2)
+                            Card {
+                                width: tricksGrid.cardWidth
+                                height: width * 1.4
+                                cardId: modelData.id
+                                cardStyle: engine.cardStyle
+                                faceUp: true
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        horizontalAlignment: Text.AlignHCenter
+                        text: qsTr("%1 points").arg(engine.playerPoints)
+
+                        visible: tricksPanel.mine
+                        font.pixelSize: Style.fontSizeSmall
+                        color: Style.secondaryColor
+                    }
                 }
             }
 

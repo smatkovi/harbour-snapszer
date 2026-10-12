@@ -77,6 +77,8 @@ public:
     Q_INVOKABLE void newMatch();
     Q_INVOKABLE void completeCardAnimation();
     Q_INVOKABLE void completeTrickAnimation();
+    // Puts a finished trick away; with waitAfterTrick in the settings the only way.
+    Q_INVOKABLE void continueTrick();
     Q_INVOKABLE QString rulesNameFor(int players, int rules) const;
     Q_INVOKABLE QString contractLabel(int contract) const;
 

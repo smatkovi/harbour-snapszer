@@ -25,7 +25,6 @@ CoverBackground {
     property int playerGamePoints: 0
     property int opponentGamePoints: 0
     property int playerPoints: 0
-    property int opponentPoints: 0
     property string cardStyle: "Piatnik"
     property var trumpCard: ({})
     property bool hasTrumpCard: false
@@ -70,7 +69,8 @@ CoverBackground {
         Label {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
-            text: qsTr("Round points %1 : %2").arg(playerPoints).arg(opponentPoints)
+            // Only your own card points: the opponent's are not public.
+            text: qsTr("Your round points: %1").arg(playerPoints)
             font.pixelSize: Theme.fontSizeExtraSmall
             color: Theme.secondaryColor
         }

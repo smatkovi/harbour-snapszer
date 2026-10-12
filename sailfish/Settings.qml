@@ -137,6 +137,14 @@ Page {
                 onCheckedChanged: settings.animationsEnabled = checked
             }
 
+            TextSwitch {
+                width: parent.width
+                text: qsTr("Put the trick away by tapping")
+                description: qsTr("The finished trick stays on the table until you tap it")
+                checked: settings.waitAfterTrick
+                onCheckedChanged: settings.waitAfterTrick = checked
+            }
+
             Slider {
                 width: parent.width
                 minimumValue: 0.5
@@ -161,6 +169,7 @@ Page {
                     settings.aiPlayDelay = 650
                     settings.animationsEnabled = true
                     settings.animationSpeed = 1.0
+                    settings.waitAfterTrick = false
                 }
             }
         }

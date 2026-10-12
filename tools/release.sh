@@ -41,15 +41,30 @@ for FILE in "$@"; do
     fi
 done
 
+# Was in dieser Fassung steckt, steht im Änderungsbuch -- der oberste Eintrag,
+# sofern er zu dieser Version gehört; so sagt jede Veröffentlichung, was sie
+# wirklich bringt (bis 1.2.0 stand hier ein fester Text).
 NOTES=$(mktemp)
-cat > "$NOTES" <<NOTE
-Snapszer $VERSION
-
-Mitspielen über Bluetooth, neben dem LAN: einmal koppeln, kein Netz nötig.
-
-Pakete für Sailfish OS (\`.rpm\`, aarch64 und armv7hl) und für MeeGo
-Harmattan auf dem Nokia N9/N950 (\`.deb\`, armel).
-NOTE
+{
+    echo "Snapszer $VERSION"
+    echo
+    awk -v want="harbour-snapszer ($VERSION)" '
+        $0 ~ /^harbour-snapszer \(/ { if (seen) exit; if (index($0, want) == 1) seen = 1; next }
+        seen && $0 !~ /^ -- / { print }
+    ' meego/changelog | sed -e 's/^  \* /* /' -e 's/^    //'
+    echo
+    for FILE in "$@"; do
+        case "$FILE" in
+        *.rpm) HAS_RPM=1 ;;
+        *.deb) HAS_DEB=1 ;;
+        *.apk) HAS_APK=1 ;;
+        esac
+    done
+    [ -n "$HAS_RPM" ] && echo "Pakete für Sailfish OS (\`.rpm\`, aarch64 und armv7hl)."
+    [ -n "$HAS_DEB" ] && echo "Paket für MeeGo Harmattan auf dem Nokia N9/N950 (\`.deb\`, armel)."
+    [ -n "$HAS_APK" ] && echo "Paket für Android (\`.apk\`, arm64-v8a)."
+    true
+} > "$NOTES"
 
 ssh "$HOST" "rm -rf $WORK && mkdir -p $WORK"
 scp "$@" "$NOTES" "$HOST:$WORK/"

@@ -331,7 +331,8 @@ Item {
             anchors.top: aiHandArea.bottom
             anchors.topMargin: -Theme.paddingSmall
             anchors.horizontalCenter: parent.horizontalCenter
-            text: engine.opponentDisplayName + "  •  " + qsTranslate("harbour-snapszer", "%1 points").arg(engine.cpuPoints)
+            // Only the name: the opponent counts for himself, as at a real table.
+            text: engine.opponentDisplayName
             font.pixelSize: Theme.fontSizeExtraSmall
             color: Theme.secondaryColor
         }
@@ -344,6 +345,13 @@ Item {
             anchors.topMargin: Theme.paddingSmall
             width: Theme.itemSizeMedium * 0.72
             height: width * 1.4
+            // The opponent's first trick may be looked at (soft rules); the rest of
+            // his pile stays his.
+            MouseArea {
+                anchors.fill: parent
+                enabled: engine.cpuWonCards.length > 1
+                onClicked: { tricksPanel.mine = false; tricksPanel.shown = !tricksPanel.shown }
+            }
             Card {
                 anchors.fill: parent
                 visible: engine.cpuWonCards.length > 0
@@ -375,7 +383,7 @@ Item {
                 width: Theme.itemSizeMedium * 0.92
                 height: width * 1.4
                 anchors.centerIn: parent
-                anchors.horizontalCenterOffset: Theme.paddingMedium
+                anchors.horizontalCenterOffset: talonDeck.width * 0.4   // more of the trump card in view
                 visible: engine.hasTrumpCard
                 cardId: engine.hasTrumpCard && engine.trumpCard.id ? engine.trumpCard.id : "0_11"
                 cardStyle: engine.cardStyle
@@ -388,7 +396,7 @@ Item {
                 width: Theme.itemSizeMedium * 0.98
                 height: width * 1.4
                 anchors.centerIn: parent
-                anchors.horizontalCenterOffset: -Theme.paddingSmall
+                anchors.horizontalCenterOffset: -Theme.paddingMedium
                 visible: engine.faceDownStockSize > 0
                 cardId: "0_10"
                 cardStyle: engine.cardStyle
@@ -429,6 +437,51 @@ Item {
                     opacity: mainPage.hiddenTrickIds[modelData.id] ? 0 : 1
                     z: index
                 }
+            }
+            // A declared 20 or 40: the partner card is shown next to the led card,
+            // the value above it, until the trick is put away.
+            Card {
+                id: marriagePartner
+                property var marriage: engine.lastMarriage
+                visible: marriage.points > 0 && engine.trickCards.length > 0
+                opacity: engine.trickCards.length > 0 && !mainPage.hiddenTrickIds[engine.trickCards[0].id] ? 1 : 0
+                width: Theme.itemSizeLarge * 0.78
+                height: width * 1.4
+                x: parent.width / 2 - width / 2 - Theme.itemSizeLarge * 1.08 * 0.28 - width * 0.6
+                y: parent.height / 2 - height / 2 - Theme.paddingMedium
+                rotation: -14
+                z: -1
+                cardId: marriage.partnerId ? marriage.partnerId : "0_10"
+                cardStyle: engine.cardStyle
+                faceUp: true
+            }
+            Rectangle {
+                visible: marriagePartner.visible
+                opacity: marriagePartner.opacity
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.top
+                anchors.bottomMargin: -Theme.paddingSmall
+                width: marriageLabel.width + 2 * Theme.paddingMedium
+                height: marriageLabel.height + Theme.paddingSmall
+                radius: height / 2
+                color: "#dd202020"
+                border.color: Theme.highlightColor
+                z: 40
+                Label {
+                    id: marriageLabel
+                    anchors.centerIn: parent
+                    text: marriagePartner.marriage.points + "!"
+                    font.pixelSize: Theme.fontSizeMedium
+                    font.bold: true
+                    color: Theme.highlightColor
+                }
+            }
+            // With "put the trick away by tapping" the finished trick waits here.
+            MouseArea {
+                anchors.fill: parent
+                z: 50
+                enabled: engine.visualPhase === 2 && engine.waitAfterTrick && !engine.networkGame
+                onClicked: engine.continueTrick()
             }
         }
 
@@ -571,6 +624,11 @@ Item {
             height: width * 1.4
             z: 2
 
+            MouseArea {
+                anchors.fill: parent
+                enabled: engine.playerWonCards.length > 0
+                onClicked: { tricksPanel.mine = true; tricksPanel.shown = !tricksPanel.shown }
+            }
             Card {
                 anchors.fill: parent
                 visible: engine.playerWonCards.length > 0
@@ -587,6 +645,71 @@ Item {
                 text: qsTranslate("harbour-snapszer", "You %1").arg(Math.floor(engine.playerWonCards.length / 2))
                 font.pixelSize: Theme.fontSizeExtraSmall
                 color: Theme.secondaryColor
+            }
+        }
+
+        // Your own tricks, pair by pair (soft rules: looking through your own
+        // tricks is allowed). Opened from the pile of won cards, closed by a tap.
+        Rectangle {
+            id: tricksPanel
+            property bool shown: false
+            visible: shown && (mine ? engine.playerWonCards.length > 0 : engine.cpuWonCards.length > 1)
+            property bool mine: true
+            z: 600
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - 2 * Theme.horizontalPageMargin
+            height: tricksColumn.height + 2 * Theme.paddingLarge
+            radius: Theme.paddingSmall
+            color: "#f0202020"
+            border.color: Theme.highlightColor
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: tricksPanel.shown = false
+            }
+
+            Column {
+                id: tricksColumn
+                anchors.centerIn: parent
+                width: parent.width - 2 * Theme.paddingLarge
+                spacing: Theme.paddingMedium
+
+                Label {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: mine ? qsTranslate("harbour-snapszer", "Your tricks") : qsTranslate("harbour-snapszer", "First trick of %1").arg(engine.opponentDisplayName)
+                    font.pixelSize: Theme.fontSizeLarge
+                    color: Theme.highlightColor
+                }
+
+                Grid {
+                    id: tricksGrid
+                    columns: 4
+                    spacing: Theme.paddingSmall
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    property real cardWidth: (tricksColumn.width - 3 * spacing) / 4
+                    Repeater {
+                        model: !tricksPanel.visible ? 0 : tricksPanel.mine ? engine.playerWonCards : engine.cpuWonCards.slice(0, 2)
+                        Card {
+                            width: tricksGrid.cardWidth
+                            height: width * 1.4
+                            cardId: modelData.id
+                            cardStyle: engine.cardStyle
+                            faceUp: true
+                        }
+                    }
+                }
+
+                Label {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTranslate("harbour-snapszer", "%1 points").arg(engine.playerPoints)
+
+                    visible: tricksPanel.mine
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.secondaryColor
+                }
             }
         }
 

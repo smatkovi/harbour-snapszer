@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(snapszer VERSION 1.1.0 LANGUAGES CXX)
+project(snapszer VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -101,8 +101,8 @@ if(ANDROID)
         QT_ANDROID_APP_ICON "@drawable/icon"
         QT_ANDROID_MIN_SDK_VERSION 28
         QT_ANDROID_TARGET_SDK_VERSION 36
-        QT_ANDROID_VERSION_CODE 4
-        QT_ANDROID_VERSION_NAME "1.1.0"
+        QT_ANDROID_VERSION_CODE 5
+        QT_ANDROID_VERSION_NAME "1.3.0"
     )
     # Broadcast discovery needs a Wi-Fi multicast lock on many devices.
     qt_add_android_permission(snapszer NAME android.permission.ACCESS_WIFI_STATE)

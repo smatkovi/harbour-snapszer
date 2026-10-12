@@ -23,6 +23,11 @@ int main(int argc, char** argv) {
     QStandardPaths::setTestModeEnabled(true);
     GameEngine host, guest;
     host.setAnimationsEnabled(false); guest.setAnimationsEnabled(false);
+    // The "put the trick away by tapping" setting is a local-game feature:
+    // in a LAN game it must be ignored, or the authoritative host would wait
+    // for a tap that never comes and the two devices would stall. Turning it
+    // on here proves the network game is unaffected -- it plays to the end.
+    host.setWaitAfterTrick(true);
     host.setPaused(true); guest.setPaused(true);
     host.start(); guest.start();
     host.hostLanGame();

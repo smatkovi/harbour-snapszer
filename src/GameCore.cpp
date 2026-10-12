@@ -116,6 +116,10 @@ void GameCore::dealRound()
     m_roundWinner = -1;
     m_roundAward = 0;
     m_roundEndReason = RoundEndReason::None;
+    m_lastMarriagePlayer = -1;
+    m_lastMarriageSuit = 0;
+    m_lastMarriagePoints = 0;
+    m_lastMarriagePartnerRank = 0;
     m_trickPending = false;
     m_pendingTrickWinner = -1;
     m_marriageClaimWindowPlayer = -1;
@@ -266,8 +270,16 @@ bool GameCore::playCard(int player, int handIndex, bool declareMarriage)
         m_marriageDeclared[player][card.suit] = true;
         m_marriagePoints[player] += marriage;
         m_marriageClaimWindowPlayer = player;
+        // Shown on the table with the led card, as the partner card would be
+        // shown at a real table.
+        m_lastMarriagePlayer = player;
+        m_lastMarriageSuit = card.suit;
+        m_lastMarriagePoints = marriage;
+        m_lastMarriagePartnerRank = card.rank == 12 ? 13 : 12;
     } else {
         m_marriageClaimWindowPlayer = -1;
+        if (m_trick.empty())
+            m_lastMarriagePlayer = -1;
     }
 
     m_trick.push_back(card);
@@ -309,6 +321,7 @@ TrickCommitResult GameCore::commitTrick()
     m_trickPending = false;
     m_pendingTrickWinner = -1;
     m_marriageClaimWindowPlayer = -1;
+    m_lastMarriagePlayer = -1;
     m_leader = winner;
     m_turn = winner;
 
@@ -376,9 +389,12 @@ bool GameCore::exchangeTrump(int player)
 
 bool GameCore::canCloseTalon(int player) const
 {
+    // Not with the last face-down card alone on the trump: Austrian rules
+    // (the Wikipedia text and pagat's "sharp" list agree) allow the
+    // exchange then, but no closing. Stock sizes run 9, 7, 5, 3, 1.
     return validPlayer(player) && !m_roundOver && !m_talonClosed && m_hasTrumpCard
         && player == m_turn && player == m_leader && m_trick.empty() && !m_trickPending
-        && !m_stock.empty();
+        && m_stock.size() >= 2;
 }
 
 bool GameCore::closeTalon(int player)
@@ -597,6 +613,10 @@ std::string GameCore::serializeState() const
          << m_roundWinner << ' ' << m_roundAward << ' '
          << static_cast<int>(m_roundEndReason) << ' ' << m_roundNumber << '\n';
     body << m_rng << '\n';
+    // Added in 1.3.0, after everything an older reader looks at: it stops at
+    // the seed and never sees this line.
+    body << m_lastMarriagePlayer << ' ' << m_lastMarriageSuit << ' '
+         << m_lastMarriagePoints << ' ' << m_lastMarriagePartnerRank << '\n';
 
     const std::string payload = body.str();
     std::ostringstream out;
@@ -676,6 +696,15 @@ bool GameCore::restoreState(const std::string& serialized)
     restored.m_roundEndReason = static_cast<RoundEndReason>(reason);
     if (!(in >> restored.m_rng))
         return false;
+    // A state from before 1.3.0 ends here; then no marriage lies on the table.
+    int mPlayer = -1, mSuit = 0, mPoints = 0, mRank = 0;
+    if (in >> mPlayer >> mSuit >> mPoints >> mRank && validPlayer(mPlayer)
+        && mSuit >= 0 && mSuit < 4 && (mPoints == 20 || mPoints == 40) && (mRank == 12 || mRank == 13)) {
+        restored.m_lastMarriagePlayer = mPlayer;
+        restored.m_lastMarriageSuit = mSuit;
+        restored.m_lastMarriagePoints = mPoints;
+        restored.m_lastMarriagePartnerRank = mRank;
+    }
 
     std::string error;
     if (!restored.validate(&error))
@@ -697,6 +726,7 @@ void GameCore::swapPlayers()
     m_leader = flip(m_leader);
     m_pendingTrickWinner = flip(m_pendingTrickWinner);
     m_marriageClaimWindowPlayer = flip(m_marriageClaimWindowPlayer);
+    m_lastMarriagePlayer = flip(m_lastMarriagePlayer);
 
     std::swap(m_cardPoints[0], m_cardPoints[1]);
     std::swap(m_marriagePoints[0], m_marriagePoints[1]);

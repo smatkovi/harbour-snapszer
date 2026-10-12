@@ -105,6 +105,14 @@ void MultiEngine::onTrickPause()
         m_watchdog.start(7000);
 }
 
+void MultiEngine::continueTrick()
+{
+    if (m_visualPhase != TrickPause || !m_core.trickPending())
+        return;
+    m_trickPauseTimer.stop();
+    onTrickPause();
+}
+
 // --- settings and persistence ------------------------------------------------------
 
 void MultiEngine::loadSettings()
@@ -325,6 +333,10 @@ void MultiEngine::completeCardAnimation()
     if (m_core.trickPending()) {
         setVisualPhase(TrickPause);
         emit stateChanged();
+        // Only in a local game: over the network the host must not wait for a
+        // tap on each device, or the two sides stall.
+        if (m_settings->waitAfterTrick() && !networkGame())
+            return;   // stays until continueTrick()
         const double speed = qMax(0.5, m_settings->animationSpeed());
         m_trickPauseTimer.start(m_settings->animationsEnabled() ? qMax(150, static_cast<int>(700.0 / speed)) : 1);
         return;
@@ -666,6 +678,8 @@ QString MultiEngine::status() const
         return tr("Match over");
     if (m_core.roundOver())
         return tr("Round over");
+    if (m_visualPhase == TrickPause && m_settings->waitAfterTrick() && !networkGame())
+        return tr("Tap the trick to put it away");
     if (m_awaitingHost || m_visualPhase != Idle)
         return tr("Cards are moving…");
     const int actor = m_core.actor();

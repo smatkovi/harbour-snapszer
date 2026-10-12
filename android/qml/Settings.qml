@@ -107,6 +107,17 @@ SubPage {
         font.pixelSize: Theme.fontSizeExtraSmall
     }
 
+    Switch {
+        x: Theme.horizontalPageMargin
+        text: qsTr("Put the trick away by tapping")
+        checked: page.settings.waitAfterTrick
+        onToggled: page.settings.waitAfterTrick = checked
+    }
+    TextBlock {
+        text: qsTr("The finished trick stays on the table until you tap it")
+        color: Theme.secondaryColor
+    }
+
     TextBlock {
         text: qsTr("Card speed") + ": " + (speedSlider.value <= 0.75 ? qsTr("Slow")
                                            : speedSlider.value <= 1.25 ? qsTr("Normal") : qsTr("Fast"))
@@ -136,6 +147,7 @@ SubPage {
             page.settings.aiPlayDelay = 650
             page.settings.animationsEnabled = true
             page.settings.animationSpeed = 1.0
+            page.settings.waitAfterTrick = false
         }
     }
 }

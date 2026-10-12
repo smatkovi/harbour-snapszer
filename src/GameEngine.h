@@ -35,6 +35,9 @@ class GameEngine : public QObject
     Q_PROPERTY(QVariantList trickCards READ trickCards NOTIFY stateChanged)
     Q_PROPERTY(QVariantList playerWonCards READ playerWonCards NOTIFY stateChanged)
     Q_PROPERTY(QVariantList cpuWonCards READ cpuWonCards NOTIFY stateChanged)
+    // The marriage announced with the lead on the table: {player, points,
+    // suit, partnerId}; an empty map while none lies there.
+    Q_PROPERTY(QVariantMap lastMarriage READ lastMarriage NOTIFY stateChanged)
     Q_PROPERTY(int playerPoints READ playerPoints NOTIFY stateChanged)
     Q_PROPERTY(int cpuPoints READ cpuPoints NOTIFY stateChanged)
     Q_PROPERTY(int playerGamePoints READ playerGamePoints NOTIFY stateChanged)
@@ -53,6 +56,9 @@ class GameEngine : public QObject
     Q_PROPERTY(int aiPlayDelay READ aiPlayDelay WRITE setAiPlayDelay NOTIFY settingsChanged)
     Q_PROPERTY(bool animationsEnabled READ animationsEnabled WRITE setAnimationsEnabled NOTIFY settingsChanged)
     Q_PROPERTY(double animationSpeed READ animationSpeed WRITE setAnimationSpeed NOTIFY settingsChanged)
+    // The finished trick stays on the table until the player taps it
+    // (continueTrick) instead of leaving after a short pause. Off by default.
+    Q_PROPERTY(bool waitAfterTrick READ waitAfterTrick WRITE setWaitAfterTrick NOTIFY settingsChanged)
     Q_PROPERTY(QString opponentDisplayName READ opponentDisplayName NOTIFY stateChanged)
 
     Q_PROPERTY(bool networkGame READ networkGame NOTIFY networkChanged)
@@ -86,6 +92,9 @@ public:
     Q_INVOKABLE void claim66();
     Q_INVOKABLE void completeCardAnimation();
     Q_INVOKABLE void completeTrickAnimation();
+    // Puts a finished trick away (phase TrickPause -> TrickFlight); with
+    // waitAfterTrick the only way, otherwise it just cuts the pause short.
+    Q_INVOKABLE void continueTrick();
     Q_INVOKABLE void completeDealAnimation();
 
     Q_INVOKABLE void hostLanGame();
@@ -112,6 +121,7 @@ public:
     QVariantList trickCards() const;
     QVariantList playerWonCards() const;
     QVariantList cpuWonCards() const;
+    QVariantMap lastMarriage() const;
     int playerPoints() const { return m_core.totalPoints(0); }
     int cpuPoints() const { return m_core.totalPoints(1); }
     int playerGamePoints() const { return m_core.gamePoints(0); }
@@ -131,6 +141,7 @@ public:
     int aiPlayDelay() const { return m_aiPlayDelay; }
     bool animationsEnabled() const { return m_animationsEnabled; }
     double animationSpeed() const { return m_animationSpeed; }
+    bool waitAfterTrick() const { return m_waitAfterTrick; }
 
     void setPlayerName(const QString& value);
     void setOpponentName(const QString& value);
@@ -139,6 +150,7 @@ public:
     void setAiPlayDelay(int value);
     void setAnimationsEnabled(bool value);
     void setAnimationSpeed(double value);
+    void setWaitAfterTrick(bool value);
 
     QString opponentDisplayName() const;
     bool networkGame() const { return m_mode != Mode::Ai; }
@@ -245,6 +257,7 @@ private:
     QString m_cardStyle = QStringLiteral("Piatnik");
     int m_aiDifficulty = 1;
     int m_aiPlayDelay = 650;
+    bool m_waitAfterTrick = false;
     bool m_animationsEnabled = true;
     double m_animationSpeed = 1.0;
     QString m_lanAddress;

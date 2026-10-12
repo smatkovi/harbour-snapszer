@@ -108,6 +108,10 @@
         <source>Round points %1 : %2</source>
         <translation>Partipontok %1 : %2</translation>
     </message>
+    <message>
+        <source>Your round points: %1</source>
+        <translation>Partipontjaid: %1</translation>
+    </message>
 </context>
 <context>
     <name>GameEngine</name>
@@ -235,6 +239,10 @@
         <source>LAN game ended: the phones got out of sync</source>
         <translation>A LAN-játék véget ért: a telefonok állapota eltért</translation>
     </message>
+    <message>
+        <source>Tap the trick to put it away</source>
+        <translation>Koppints az ütésre, hogy elrakd</translation>
+    </message>
 </context>
 <context>
     <name>GameRules</name>
@@ -283,8 +291,8 @@
         <translation>A talon lezárása</translation>
     </message>
     <message>
-        <source>On lead you may close the talon. Nobody draws afterwards and strict play begins immediately. You must follow suit and overtake if possible; otherwise play the led suit, then trump if void, and only then discard another suit. Closing is a commitment: if the closer fails to make 66, the opponent wins extra game points.</source>
-        <translation>Híváskor lezárhatod a talont. Ezután senki sem húz, és azonnal életbe lép a kötelező játék: színt kell adni és lehetőség szerint felül kell ütni; ha ez nem lehetséges, a hívott színt kell tenni, színhiány esetén adut, és csak adu hiányában dobható más szín. A lezárás vállalás: ha a lezáró nem éri el a 66-ot, az ellenfél több játékpontot kap.</translation>
+        <source>On lead you may close the talon, as long as at least two face-down cards still lie on the trump card. Nobody draws afterwards and strict play begins immediately. You must follow suit and overtake if possible; otherwise play the led suit, then trump if void, and only then discard another suit. Closing is a commitment: if the closer fails to make 66, the opponent wins extra game points.</source>
+        <translation>Híváskor lezárhatod a talont, amíg legalább két lefordított lap fekszik az adun. Ezután senki sem húz, és azonnal életbe lép a kötelező játék: színt kell adni és lehetőség szerint felül kell ütni; ha ez nem lehetséges, a hívott színt kell tenni, színhiány esetén adut, és csak adu hiányában dobható más szín. A lezárás vállalás: ha a lezáró nem éri el a 66-ot, az ellenfél több játékpontot kap.</translation>
     </message>
     <message>
         <source>Calling 66</source>
@@ -293,6 +301,14 @@
     <message>
         <source>After winning a trick, call 66 once your trick points plus valid declarations reach at least 66. Normally the round is worth 1 game point if the opponent has at least 33, 2 if below 33, or 3 if the opponent has taken no trick. If nobody calls 66 and the open talon is played to the end, the last trick wins 1 game point.</source>
         <translation>Egy ütés megnyerése után mondj 66-ot, ha az ütésekből és érvényes bemondásokból szerzett pontjaid elérik legalább a 66-ot. A parti általában 1 játékpontot ér, ha az ellenfélnek legalább 33 pontja van, 2-t, ha 33 alatt marad, illetve 3-at, ha egyetlen ütést sem vitt el. Ha senki sem mond 66-ot, és a nyitott talon végig elfogy, az utolsó ütés 1 játékpontért megnyeri a partit.</translation>
+    </message>
+    <message>
+        <source>Looking at tricks</source>
+        <translation>Ütések megnézése</translation>
+    </message>
+    <message>
+        <source>Soft rules: you may look through your own tricks at any time, and at the first trick of your opponent. Tap the pile of won cards.</source>
+        <translation>Laza szabályok: a saját ütéseidet bármikor átnézheted, az ellenfélnek pedig az első ütését. Koppints a megnyert lapok kupacára.</translation>
     </message>
 </context>
 <context>
@@ -675,6 +691,10 @@
         <source>LAN game ended: the devices got out of sync</source>
         <translation>A LAN-játék véget ért: az eszközök állapota eltért</translation>
     </message>
+    <message>
+        <source>Tap the trick to put it away</source>
+        <translation>Koppints az ütésre, hogy elrakd</translation>
+    </message>
 </context>
 <context>
     <name>MultiPage</name>
@@ -979,6 +999,14 @@
         <source>Reset to defaults</source>
         <translation>Alapértékek visszaállítása</translation>
     </message>
+    <message>
+        <source>Put the trick away by tapping</source>
+        <translation>Ütés elrakása koppintással</translation>
+    </message>
+    <message>
+        <source>The finished trick stays on the table until you tap it</source>
+        <translation>A kész ütés az asztalon marad, amíg rá nem koppintasz</translation>
+    </message>
 </context>
 <context>
     <name>harbour-snapszer</name>
@@ -1101,6 +1129,14 @@
     <message>
         <source>Play over LAN</source>
         <translation>Játék helyi hálózaton</translation>
+    </message>
+    <message>
+        <source>Your tricks</source>
+        <translation>Az ütéseid</translation>
+    </message>
+    <message>
+        <source>First trick of %1</source>
+        <translation>%1 első ütése</translation>
     </message>
 </context>
 </TS>

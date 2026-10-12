@@ -67,6 +67,14 @@ public:
 
     int cardPoints(int player) const { return m_cardPoints[player]; }
     int marriagePoints(int player) const { return m_marriagePoints[player]; }
+    // The marriage announced with the lead that lies on the table: who, in
+    // which suit, 20 or 40, and the rank of the partner card still in that
+    // hand (the other one of King 13 / Upper 12). Gone when the trick is
+    // put away; player -1 means none.
+    int lastMarriagePlayer() const { return m_lastMarriagePlayer; }
+    int lastMarriageSuit() const { return m_lastMarriageSuit; }
+    int lastMarriagePoints() const { return m_lastMarriagePoints; }
+    int lastMarriagePartnerRank() const { return m_lastMarriagePartnerRank; }
     int totalPoints(int player) const;
     int gamePoints(int player) const { return m_gamePoints[player]; }
     bool hasWonTrick(int player) const { return m_hasWonTrick[player]; }
@@ -132,6 +140,10 @@ private:
     bool m_trickPending = false;
     int m_pendingTrickWinner = -1;
     int m_marriageClaimWindowPlayer = -1;
+    int m_lastMarriagePlayer = -1;
+    int m_lastMarriageSuit = 0;
+    int m_lastMarriagePoints = 0;
+    int m_lastMarriagePartnerRank = 0;
 
     std::array<int, 2> m_cardPoints{{0, 0}};
     std::array<int, 2> m_marriagePoints{{0, 0}};

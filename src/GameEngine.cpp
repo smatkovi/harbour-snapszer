@@ -72,6 +72,14 @@ void GameEngine::onTrickPause()
         m_visualWatchdog.start(7000);
 }
 
+void GameEngine::continueTrick()
+{
+    if (m_visualPhase != TrickPause || !m_core.trickPending())
+        return;
+    m_trickPauseTimer.stop();
+    onTrickPause();
+}
+
 std::uint32_t GameEngine::freshSeed() const
 {
     return static_cast<std::uint32_t>(QDateTime::currentMSecsSinceEpoch() & UINT64_C(0xffffffff));
@@ -98,6 +106,7 @@ void GameEngine::loadSettings()
     m_aiPlayDelay = qBound(150, settings.value(QStringLiteral("ai/playDelay"), 650).toInt(), 2000);
     m_animationsEnabled = settings.value(QStringLiteral("ui/animationsEnabled"), true).toBool();
     m_animationSpeed = qBound(0.5, settings.value(QStringLiteral("ui/animationSpeed"), 1.0).toDouble(), 2.0);
+    m_waitAfterTrick = settings.value(QStringLiteral("ui/waitAfterTrick"), false).toBool();
     m_lanAddress = settings.value(QStringLiteral("lan/lastAddress")).toString();
 }
 
@@ -111,8 +120,19 @@ void GameEngine::saveSettings()
     settings.setValue(QStringLiteral("ai/playDelay"), m_aiPlayDelay);
     settings.setValue(QStringLiteral("ui/animationsEnabled"), m_animationsEnabled);
     settings.setValue(QStringLiteral("ui/animationSpeed"), m_animationSpeed);
+    settings.setValue(QStringLiteral("ui/waitAfterTrick"), m_waitAfterTrick);
     settings.setValue(QStringLiteral("lan/lastAddress"), m_lanAddress);
     settings.sync();
+}
+
+void GameEngine::setWaitAfterTrick(bool value)
+{
+    if (value == m_waitAfterTrick) return;
+    m_waitAfterTrick = value;
+    // Switched off while a trick lies waiting: let it go now.
+    if (!value && m_visualPhase == TrickPause && !m_trickPauseTimer.isActive())
+        m_trickPauseTimer.start(1);
+    saveSettings(); emit settingsChanged();
 }
 
 void GameEngine::setPlayerName(const QString& value)
@@ -212,6 +232,21 @@ QVariantList GameEngine::trickCards() const { return cardsToList(m_core.trick())
 QVariantList GameEngine::playerWonCards() const { return cardsToList(m_core.wonCards(0)); }
 QVariantList GameEngine::cpuWonCards() const { return cardsToList(m_core.wonCards(1)); }
 
+QVariantMap GameEngine::lastMarriage() const
+{
+    QVariantMap result;
+    if (m_core.lastMarriagePlayer() < 0)
+        return result;
+    Snapszer::Card partner;
+    partner.suit = m_core.lastMarriageSuit();
+    partner.rank = m_core.lastMarriagePartnerRank();
+    result.insert(QStringLiteral("player"), m_core.lastMarriagePlayer());
+    result.insert(QStringLiteral("points"), m_core.lastMarriagePoints());
+    result.insert(QStringLiteral("suit"), m_core.lastMarriageSuit());
+    result.insert(QStringLiteral("partnerId"), cardId(partner));
+    return result;
+}
+
 QVariantMap GameEngine::trumpCard() const
 {
     return m_core.hasTrumpCard() ? cardMap(m_core.trumpCard()) : QVariantMap();
@@ -250,6 +285,8 @@ QString GameEngine::status() const
         return m_core.matchWinner() == 0 ? tr("You won the match") : tr("%1 won the match").arg(opponentDisplayName());
     if (m_core.roundOver())
         return tr("Round finished");
+    if (m_visualPhase == TrickPause && m_waitAfterTrick && !networkGame())
+        return tr("Tap the trick to put it away");
     if (m_visualPhase != Idle)
         return tr("Cards are moving…");
     if (m_core.talonClosed())
@@ -493,6 +530,11 @@ void GameEngine::beginTrickResolution()
 {
     setVisualPhase(TrickPause);
     emit stateChanged();
+    // The trick stays until the player taps it (continueTrick); no timer
+    // then, whatever the animation setting says. Only in a local game: over
+    // the network the host must not wait for a tap, or the two devices stall.
+    if (m_waitAfterTrick && !networkGame())
+        return;
     if (m_animationsEnabled)
         m_trickPauseTimer.start(qMax(120, static_cast<int>(420.0 / m_animationSpeed)));
     else

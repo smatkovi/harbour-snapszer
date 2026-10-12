@@ -107,7 +107,16 @@ Page {
                 x: Theme.horizontalPageMargin
                 wrapMode: Text.WordWrap
                 font.pixelSize: Theme.fontSizeSmall
-                text: qsTr("On lead you may close the talon. Nobody draws afterwards and strict play begins immediately. You must follow suit and overtake if possible; otherwise play the led suit, then trump if void, and only then discard another suit. Closing is a commitment: if the closer fails to make 66, the opponent wins extra game points.")
+                text: qsTr("On lead you may close the talon, as long as at least two face-down cards still lie on the trump card. Nobody draws afterwards and strict play begins immediately. You must follow suit and overtake if possible; otherwise play the led suit, then trump if void, and only then discard another suit. Closing is a commitment: if the closer fails to make 66, the opponent wins extra game points.")
+            }
+
+            SectionHeader { text: qsTr("Looking at tricks") }
+            Label {
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                x: Theme.horizontalPageMargin
+                wrapMode: Text.WordWrap
+                font.pixelSize: Theme.fontSizeSmall
+                text: qsTr("Soft rules: you may look through your own tricks at any time, and at the first trick of your opponent. Tap the pile of won cards.")
             }
 
             SectionHeader { text: qsTr("Calling 66") }

@@ -1,3 +1,21 @@
+harbour-snapszer (1.3.0) unstable; urgency=low
+
+  * Your own tricks can be looked at: tap your pile of won cards.
+  * New setting "Put the trick away by tapping": the finished trick stays
+    on the table until you tap it (two, three and four players).
+  * The opponent's card points are no longer shown during the hand, as at
+    a real table; your own stay, the game points of the match too.
+  * A declared 20 or 40 is shown on the table with the second card of
+    the pair, as the declarer would show it.
+  * The trump card under the talon sticks out further.
+  * Rules checked against pagat.com and the Austrian rules: closing the
+    talon is no longer allowed when only one face-down card lies on the
+    trump (the exchange still is); strict play after closing was right.
+  * The opponent's first trick may be looked at, as the soft rules allow:
+    tap his pile.
+
+ -- Sebastian Matkovich <sebastian.matkovich@gmail.com>  Mon, 12 Oct 2026 21:00:00 +0200
+
 harbour-snapszer (1.2.0) unstable; urgency=low
 
   * Play against another phone over Bluetooth, next to the LAN: hosting opens
